@@ -93,14 +93,17 @@ TEMPLATES = [
 WSGI_APPLICATION = "profootgn.wsgi.application"
 
 # =========================
-# Database
+# Database (MySQL local / Postgres Render)
 # =========================
-# Si DATABASE_URL est présent (Render → Postgres), on l'utilise.
-# Sinon, on garde MySQL (dev local).
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}
+import dj_database_url
+
+if os.getenv("DATABASE_URL"):
+    # Prod/Render: utilise la chaîne postgres://
+    DATABASES = {
+        "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=600)
+    }
 else:
+    # Dev local: MySQL
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
@@ -112,6 +115,7 @@ else:
             "OPTIONS": {"charset": "utf8mb4"},
         }
     }
+
 
 # =========================
 # Auth
