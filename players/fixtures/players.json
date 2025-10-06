@@ -1,0 +1,28 @@
+[
+  {
+    "model": "players.player",
+    "pk": 1,
+    "fields": {
+      "first_name": "Ibrahima",
+      "last_name": "Camara",
+      "club": 1,
+      "number": 10,
+      "position": "FW",
+      "nationality": "Guinea",
+      "birthdate": "1998-04-02"
+    }
+  },
+  {
+    "model": "players.player",
+    "pk": 2,
+    "fields": {
+      "first_name": "Abdoulaye",
+      "last_name": "Sylla",
+      "club": 2,
+      "number": 9,
+      "position": "FW",
+      "nationality": "Guinea",
+      "birthdate": "1997-06-15"
+    }
+  }
+]

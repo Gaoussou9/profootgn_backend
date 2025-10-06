@@ -1,0 +1,4 @@
+# Envs réels à ne jamais committer
+.env
+.env.staging
+.env.production

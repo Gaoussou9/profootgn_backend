@@ -1,0 +1,12 @@
+[
+  {
+    "model": "matches.goal",
+    "pk": 1,
+    "fields": {
+      "match": 1,
+      "player": 1,
+      "club": 1,
+      "minute": 34
+    }
+  }
+]

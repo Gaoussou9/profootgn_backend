@@ -1,0 +1,18 @@
+{# templates/admin/matches/change_list_with_quick.html #}
+{% extends "admin/change_list.html" %}
+
+{# Optionnel : titre custom #}
+{% block content_title %}
+  {{ title }}
+{% endblock %}
+
+{# On réutilise tout le contenu standard et on ajoute des actions rapides #}
+{% block object-tools-items %}
+  {{ block.super }}
+  <li>
+    <a href="{% url 'admin_quick_match' %}" class="addlink">Match rapide</a>
+  </li>
+  <li>
+    <a href="{% url 'admin_quick_events' %}" class="addlink">Événements rapides</a>
+  </li>
+{% endblock %}

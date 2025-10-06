@@ -1,0 +1,345 @@
+{# templates/admin/players/quick_add.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{# 🔹 styles partagés des pages rapides #}
+{% block extrastyle %}
+  {% include "includes/admin_quick_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="aq-container">
+
+  {# 🔹 barre d’onglets rapides (présente sur toutes les pages) #}
+  {% include "includes/admin_quick_toolbar.html" with active="players" title="Ajouter / gérer rapidement des joueurs" %}
+
+  {% if messages %}
+    {% for m in messages %}
+      <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <style>
+    /* IMPORTANT : éviter que la dropdown soit coupée */
+    .aq-container, .card, .card-body { overflow: visible; }
+
+    .club-picker{position:relative; overflow:visible}
+    .club-dropdown{
+      position:absolute; z-index:3000; left:0; right:0; top: calc(100% + 4px);
+      max-height:260px; overflow:auto; background:#fff; border:1px solid #e5e7eb;
+      border-radius:.5rem; box-shadow:0 12px 28px rgba(0,0,0,.08); display:none
+    }
+    .club-item{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;cursor:pointer}
+    .club-item:hover{background:#f3f4f6}
+    .club-item img{width:28px;height:28px;object-fit:contain;border-radius:.375rem;background:#f9fafb}
+    .club-selected{display:flex;align-items:center;gap:.5rem}
+    .club-selected img{width:28px;height:28px;object-fit:contain;border-radius:.375rem;background:#f9fafb}
+
+    .small-muted{font-size:.875rem;color:#6b7280}
+    .table-sm td, .table-sm th { padding: .4rem .5rem; }
+    .avatar { width:36px; height:36px; object-fit:cover; border-radius:6px; background:#f3f4f6; }
+    .photo-preview { width:64px; height:64px; object-fit:cover; border-radius:.5rem; background:#f3f4f6; }
+    tr.player-row.active { background:#eef6ff; }
+  </style>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form id="player-form" method="post" class="vstack gap-3" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label">Nom complet</label>
+            <input type="text" name="name" class="form-control" placeholder="">
+            <div class="small-muted">ou saisis Prénom/Nom ci-dessous</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Prénom</label>
+            <input type="text" name="first_name" class="form-control" placeholder="">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Nom</label>
+            <input type="text" name="last_name" class="form-control" placeholder="">
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label">Numéro</label>
+            <input type="number" name="number" class="form-control" min="0" step="1" placeholder="ex: 9">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Poste</label>
+            <input type="text" name="position" class="form-control"
+                   placeholder="ex: Attaquant" maxlength="{{ pos_max }}">
+          </div>
+
+          <!-- CLUB PICKER -->
+          <div class="col-md-6">
+            <label class="form-label">Club</label>
+            <div class="club-picker" id="picker-club">
+              <div class="club-selected mb-1" style="display:none">
+                <img alt="logo" />
+                <strong class="name"></strong>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 clear" title="Effacer">×</button>
+              </div>
+              <!-- visible: nom du club -->
+              <input type="text" class="form-control input" name="club_name"
+                     placeholder="Cliquer pour choisir…" autocomplete="off">
+              <!-- caché: id du club -->
+              <input type="hidden" name="club" id="club-id">
+              <div class="club-dropdown list"></div>
+            </div>
+            <div class="small-muted mt-1">Tu peux écrire le nom du club si tu ne cliques pas dans la liste.</div>
+          </div>
+        </div>
+
+        <!-- PHOTO -->
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Photo du joueur</label>
+            <input type="file" name="photo" accept="image/*" class="form-control" id="photo-input">
+            <div class="small-muted">Formats image (JPG/PNG/WebP). Taille raisonnable conseillée.</div>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <img id="photo-preview" class="photo-preview" alt="aperçu" style="display:none;">
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" value="1" id="clear-photo" name="clear_photo">
+              <label class="form-check-label" for="clear-photo">Supprimer la photo</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+          <input type="text" class="form-control form-control-sm" style="width:160px" name="id" placeholder="ID (pour éditer)">
+          <button class="btn btn-primary">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <h5 class="mb-2">Derniers joueurs</h5>
+  <div class="card">
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Photo</th>
+            <th>Nom</th>
+            <th>Club</th>
+            <th>Num.</th>
+            <th>Poste</th>
+            <th style="width:130px">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in players %}
+            <tr class="player-row"
+                data-id="{{ p.id }}"
+                data-name="{{ p.name|default_if_none:'' }}"
+                data-first-name="{{ p.first_name|default_if_none:'' }}"
+                data-last-name="{{ p.last_name|default_if_none:'' }}"
+                data-number="{{ p.number|default_if_none:'' }}"
+                data-position="{{ p.position|default_if_none:'' }}"
+                data-club-id="{% if p.club %}{{ p.club.id }}{% endif %}"
+                data-club-name="{% if p.club %}{{ p.club.name }}{% endif %}">
+              <td>{{ p.id }}</td>
+              <td>
+                {% if p.photo %}
+                  <img src="{{ p.photo.url }}" class="avatar js-row-photo" alt="">
+                {% elif p.image %}
+                  <img src="{{ p.image.url }}" class="avatar js-row-photo" alt="">
+                {% elif p.avatar %}
+                  <img src="{{ p.avatar.url }}" class="avatar js-row-photo" alt="">
+                {% elif p.picture %}
+                  <img src="{{ p.picture.url }}" class="avatar js-row-photo" alt="">
+                {% elif p.profile_image %}
+                  <img src="{{ p.profile_image.url }}" class="avatar js-row-photo" alt="">
+                {% elif p.profile_photo %}
+                  <img src="{{ p.profile_photo.url }}" class="avatar js-row-photo" alt="">
+                {% else %}
+                  <img src="{% static 'admin/img/icon-user.svg' %}" class="avatar js-row-photo" alt="">
+                {% endif %}
+              </td>
+              <td>
+                {% if p.name %}{{ p.name }}
+                {% else %}{{ p.first_name }} {{ p.last_name }}{% endif %}
+              </td>
+              <td>{% if p.club %}{{ p.club.name }}{% endif %}</td>
+              <td>{% if p.number %}{{ p.number }}{% endif %}</td>
+              <td>{% if p.position %}{{ p.position }}{% endif %}</td>
+              <td>
+                <form method="post" class="d-inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="delete_id" value="{{ p.id }}">
+                  <button class="btn btn-sm btn-outline-danger"
+                          onclick="return confirm('Supprimer le joueur #{{p.id}} ?')">Supprimer</button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-muted">Aucun joueur</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div> {# /aq-container #}
+
+<script>
+/* =========================
+   UTILS
+   ========================= */
+function get(url){ return fetch(url).then(r=>r.json()).catch(()=>({results:[]})); }
+
+/* =========================
+   CLUB PICKER — Players
+   ========================= */
+const CLUBS_ENDPOINT = "{% url 'quick_clubs_api' %}";  // ✅ via name Django
+
+let CLUBS_CACHE = null;
+async function fetchClubs(){
+  if (CLUBS_CACHE) return CLUBS_CACHE;
+  try{
+    const r = await fetch(CLUBS_ENDPOINT + "?q=");
+    const data = await r.json();
+    CLUBS_CACHE = Array.isArray(data) ? data : [];
+  }catch(e){
+    CLUBS_CACHE = [];
+  }
+  return CLUBS_CACHE;
+}
+
+function renderClubList(el, items){
+  el.innerHTML = items.map(c => {
+    const logo = c.logo || '';
+    return `
+      <div class="club-item" data-id="${c.id}" data-name="${c.name}" data-logo="${logo}">
+        <img src="${logo}" alt=""><span>${c.name}</span>
+      </div>`;
+  }).join('') || `<div style="padding:.6rem .75rem;color:#6b7280;">Aucun club</div>`;
+}
+
+function installPicker(root){
+  const input = root.querySelector('.input');
+  const list  = root.querySelector('.list');
+  const idFld = document.getElementById('club-id');
+  const sel   = root.querySelector('.club-selected');
+  const selImg= sel.querySelector('img');
+  const selNm = sel.querySelector('.name');
+  const btnClr= sel.querySelector('.clear');
+
+  let all = [];
+  const open  = ()=>{ list.style.display='block'; };
+  const close = ()=>{ list.style.display='none'; };
+
+  fetchClubs().then(clubs => { all = clubs; renderClubList(list, all); });
+
+  input.addEventListener('focus', open);
+  input.addEventListener('click', open);
+  document.addEventListener('click', (e)=>{ if(!root.contains(e.target)) close(); });
+
+  input.addEventListener('input', ()=>{
+    const q = input.value.toLowerCase().trim();
+    const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q)) : all;
+    renderClubList(list, filtered); open();
+  });
+
+  list.addEventListener('click', (e)=>{
+    const item = e.target.closest('.club-item'); if(!item) return;
+    const id = item.dataset.id, name = item.dataset.name, logo = item.dataset.logo || '';
+    idFld.value = id;
+    input.value = name;
+    selImg.src = logo || '';
+    selNm.textContent = name;
+    sel.style.display = 'flex';
+    close();
+  });
+
+  btnClr.addEventListener('click', ()=>{
+    idFld.value = '';
+    input.value = '';
+    sel.style.display = 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  installPicker(document.getElementById('picker-club'));
+});
+
+/* =========================
+   PREVIEW PHOTO
+   ========================= */
+const photoInput = document.getElementById('photo-input');
+const photoPrev  = document.getElementById('photo-preview');
+if (photoInput) {
+  photoInput.addEventListener('change', ()=>{
+    const f = photoInput.files && photoInput.files[0];
+    if (!f) { photoPrev.style.display='none'; return; }
+    const url = URL.createObjectURL(f);
+    photoPrev.src = url; photoPrev.style.display = '';
+    const clear = document.getElementById('clear-photo'); if(clear) clear.checked = false;
+  });
+}
+
+/* =========================
+   REMPLISSAGE AU CLIC LIGNE
+   ========================= */
+const form = document.getElementById('player-form');
+document.querySelectorAll('tr.player-row').forEach(tr=>{
+  tr.addEventListener('click', ()=>{
+    document.querySelectorAll('tr.player-row').forEach(x=>x.classList.remove('active'));
+    tr.classList.add('active');
+
+    const id    = tr.dataset.id || '';
+    const name  = tr.dataset.name || '';
+    const fn    = tr.dataset.firstName || '';
+    const ln    = tr.dataset.lastName || '';
+    const num   = tr.dataset.number || '';
+    const pos   = tr.dataset.position || '';
+    const cid   = tr.dataset.clubId || '';
+    const cname = tr.dataset.clubName || '';
+
+    const img = tr.querySelector('.js-row-photo');
+    const photoUrl = img ? img.getAttribute('src') : '';
+
+    form.querySelector('[name="id"]').value          = id;
+    form.querySelector('[name="name"]').value        = name;
+    form.querySelector('[name="first_name"]').value  = fn;
+    form.querySelector('[name="last_name"]').value   = ln;
+    form.querySelector('[name="number"]').value      = num;
+    form.querySelector('[name="position"]').value    = pos;
+
+    // Remplir le picker club
+    (function setClubPicker(id, name, logo){
+      const root = document.getElementById('picker-club');
+      if(!root) return;
+      root.querySelector('#club-id').value = id || '';
+      root.querySelector('.input').value = name || '';
+      const sel = root.querySelector('.club-selected');
+      sel.querySelector('img').src = logo || '';
+      sel.querySelector('.name').textContent = name || '';
+      sel.style.display = name ? 'flex' : 'none';
+    })(cid, cname, '');
+
+    if (photoUrl) {
+      photoPrev.src = photoUrl;
+      photoPrev.style.display = '';
+    } else {
+      photoPrev.style.display = 'none';
+      photoPrev.src = '';
+    }
+
+    const clr = document.getElementById('clear-photo');
+    if (clr) clr.checked = false;
+    if (photoInput) photoInput.value = '';
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+</script>
+{% endblock %}

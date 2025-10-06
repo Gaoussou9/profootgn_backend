@@ -1,0 +1,107 @@
+[
+    {
+        "model": "clubs.club",
+        "pk": 1,
+        "fields": {
+            "name": "Horoya AC",
+            "short_name": "Horoya",
+            "city": "Conakry",
+            "founded": "1975-01-01",
+            "stadium": "Stade du 28 Septembre",
+            "president": "Soufiane Souar\u00e9",
+            "coach": "Lamine N'Diaye"
+        }
+    },
+    {
+        "model": "clubs.club",
+        "pk": 2,
+        "fields": {
+            "name": "Hafia FC",
+            "short_name": "Hafia",
+            "city": "Conakry",
+            "founded": "1951-01-01",
+            "stadium": "Stade Petit Sory",
+            "president": "Kerfala Camara",
+            "coach": "Casimir Jagiello"
+        }
+    },
+    {
+        "model": "players.player",
+        "pk": 1,
+        "fields": {
+            "first_name": "Ibrahima",
+            "last_name": "Sory Bah",
+            "club": 1,
+            "number": 9,
+            "position": "FW",
+            "nationality": "Guinea",
+            "birthdate": "1997-03-12"
+        }
+    },
+    {
+        "model": "players.player",
+        "pk": 2,
+        "fields": {
+            "first_name": "Mohamed",
+            "last_name": "Camara",
+            "club": 2,
+            "number": 10,
+            "position": "MF",
+            "nationality": "Guinea",
+            "birthdate": "1996-07-04"
+        }
+    },
+    {
+        "model": "matches.round",
+        "pk": 1,
+        "fields": {
+            "name": "Journ\u00e9e 1",
+            "date": "2025-08-01"
+        }
+    },
+    {
+        "model": "matches.match",
+        "pk": 1,
+        "fields": {
+            "round": 1,
+            "datetime": "2025-08-01T16:00:00Z",
+            "home_club": 1,
+            "away_club": 2,
+            "home_score": 2,
+            "away_score": 1,
+            "status": "FINISHED",
+            "minute": 90,
+            "venue": "Stade du 28 Septembre"
+        }
+    },
+    {
+        "model": "matches.goal",
+        "pk": 1,
+        "fields": {
+            "match": 1,
+            "player": 1,
+            "club": 1,
+            "minute": 15
+        }
+    },
+    {
+        "model": "matches.goal",
+        "pk": 2,
+        "fields": {
+            "match": 1,
+            "player": 2,
+            "club": 2,
+            "minute": 34
+        }
+    },
+    {
+        "model": "matches.goal",
+        "pk": 3,
+        "fields": {
+            "match": 1,
+            "player": 1,
+            "club": 1,
+            "minute": 75
+        }
+    }
+]

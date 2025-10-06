@@ -1,0 +1,209 @@
+:root{
+  --aq-bg:#ffffff;
+  --aq-text:#111827;
+  --aq-muted:#6b7280;
+  --aq-border:#e5e7eb;
+  --aq-ring:#2563eb;
+  --aq-primary:#2563eb;
+  --aq-primary-600:#6b6f7a;
+  --aq-danger:#dc2626;
+  --aq-success:#16a34a;
+  --aq-shadow:0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.06);
+}
+
+/* Conteneur max + respiration */
+.aq-container{max-width:1200px;margin:0 auto;padding:12px;}
+
+/* Toolbar d’actions */
+.aq-toolbar{
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding:10px;border:1px solid var(--aq-border);border-radius:12px;background:var(--aq-bg);
+  box-shadow: var(--aq-shadow);
+}
+.aq-title{font-weight:700;font-size:18px;margin-right:auto;color:var(--aq-text);}
+.aq-spacer{flex:1 1 auto}
+
+/* Boutons */
+.aq-btn{
+  appearance:none;border:1px solid var(--aq-border);background:#f9fafb;color:var(--aq-text);
+  padding:8px 12px;border-radius:10px;font-weight:600;line-height:1.2;cursor:pointer;
+  transition: transform .04s ease, background .15s ease, border-color .15s ease;
+  text-decoration:none;display:inline-flex;align-items:center;gap:8px;
+}
+.aq-btn:hover{background:#f3f4f6;border-color:#d1d5db}
+.aq-btn:active{transform:translateY(1px)}
+.aq-btn--primary{background:var(--aq-primary);border-color:var(--aq-primary);color:#fff}
+.aq-btn--primary:hover{background:var(--aq-primary-600);border-color:var(--aq-primary-600)}
+.aq-btn--ghost{background:transparent}
+.aq-btn[aria-current="page"], .aq-btn--active{
+  border-color:var(--aq-ring); box-shadow:0 0 0 3px rgba(37,99,235,.20);
+}
+
+/* Grille de cartes (clubs) */
+.aq-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-top:14px;
+}
+.aq-card{
+  border:1px solid var(--aq-border);border-radius:14px;padding:14px;background:#fff;
+  text-align:center;box-shadow: var(--aq-shadow);transition:transform .08s ease, box-shadow .15s ease;
+  display:block;color:inherit;text-decoration:none;
+}
+.aq-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.aq-card__logo{width:96px;height:96px;object-fit:contain;margin:0 auto 10px;display:block}
+.aq-card__name{font-weight:700;color:var(--aq-text);}
+
+/* Sections liste (roster) */
+.aq-section{flex:1;min-width:420px;border:1px solid var(--aq-border);border-radius:14px;padding:14px;background:#fff;box-shadow:var(--aq-shadow)}
+.aq-h2{font-size:16px;font-weight:800;margin:4px 0 10px}
+.aq-textarea{width:100%;border:1px solid var(--aq-border);border-radius:10px;padding:10px;font-family:inherit}
+.aq-meta{color:var(--aq-muted);font-size:12px}
+
+/* Badges statuts (si tu les utilises) */
+.aq-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--aq-border);font-weight:600;font-size:12px}
+.aq-badge--live{border-color:#fecaca;color:#b91c1c;background:#fff1f2}
+.aq-badge--ok{border-color:#bbf7d0;color:#166534;background:#f0fdf4}
+
+/* Petite rangée responsive */
+.aq-row{display:flex;gap:24px;flex-wrap:wrap;margin-top:14px}
+
+/* Inputs */
+.aq-checkbox{vertical-align:middle;margin-right:6px}
+
+/* Tables/listes simples */
+.aq-list{margin:8px 0;padding:0;list-style:none}
+.aq-li{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--aq-border)}
+.aq-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover}
+
+
+/* ====== PALETTE ====== */
+:root{
+  --aq-bg:#ffffff;
+  --aq-text:#0f172a;
+  --aq-border:#e5e7eb;
+  --aq-primary:#e5e7eb;   /* bleu */
+  --aq-primary-600:#2a509d;
+
+  --aq-green:#10b981;     /* start */
+  --aq-green-600:#059669;
+
+  --aq-amber:#f59e0b;     /* pause */
+  --aq-amber-600:#d97706;
+
+  --aq-slate:#439161;     /* fin */
+  --aq-slate-700:#475569;
+
+  --aq-indigo:#6366f1;    /* edit */
+  --aq-indigo-600:#4f46e5;
+
+  --aq-cyan:#06b6d4;      /* reporté */
+  --aq-cyan-600:#0891b2;
+
+  --aq-blue:#3b82f6;      /* prévu */
+  --aq-blue-600:#2563eb;
+
+  --aq-orange:#fb923c;    /* suspendre */
+  --aq-orange-600:#f97316;
+
+  --aq-red:#ef4444;       /* annulé/supprimer */
+  --aq-red-600:#dc2626;
+}
+
+/* ====== Toolbar active (tu l'as déjà) ====== */
+.aq-btn{ border:1px solid var(--aq-border); background:0; }
+.aq-btn--primary{ background:var(); border-color:var(--aq-primary); color:#b1b9c9; }
+.aq-btn--primary:hover{ background:var(--aq-primary-600); border-color:var(--aq-primary-600); }
+
+/* ====== Overrides des boutons Bootstrap existants ====== */
+/* Bouton principal "Ajouter le match" */
+.btn.btn-primary{
+  background:var();
+  border-color:var();
+}
+.btn.btn-primary:hover{
+  background:var();
+  border-color:var();
+}
+
+/* Actions live (ciblées par ID + classe .btn) */
+#btn-start.btn{
+  background:var(--aq-green); border-color:var(--aq-green); color:#fff;
+}
+#btn-start.btn:hover{ background:var(--aq-green-600); border-color:var(--aq-green-600); }
+
+#btn-pause.btn{
+  background:var(--aq-amber); border-color:var(--aq-amber); color:#111;
+}
+#btn-pause.btn:hover{ background:var(--aq-amber-600); border-color:var(--aq-amber-600); color:#fff; }
+
+#btn-finish.btn{
+  background:var(--aq-slate); border-color:var(--aq-slate); color:#fff;
+}
+#btn-finish.btn:hover{ background:var(--aq-slate-700); border-color:var(--aq-slate-700); }
+
+#btn-edit.btn{
+  color:#fff; background:var(--aq-indigo); border-color:var(--aq-indigo);
+}
+#btn-edit.btn:hover{ background:var(--aq-indigo-600); border-color:var(--aq-indigo-600); }
+
+#btn-sched.btn{
+  color:#fff; background:var(--aq-blue); border-color:var(--aq-blue);
+}
+#btn-sched.btn:hover{ background:var(--aq-blue-600); border-color:var(--aq-blue-600); }
+
+#btn-post.btn{
+  color:#fff; background:var(--aq-cyan); border-color:var(--aq-cyan);
+}
+#btn-post.btn:hover{ background:var(--aq-cyan-600); border-color:var(--aq-cyan-600); }
+
+#btn-susp.btn{
+  color:#111; background:#fff; border-color:var(--aq-orange);
+}
+#btn-susp.btn:hover{ color:#fff; background:var(--aq-orange); border-color:var(--aq-orange-600); }
+
+#btn-cancel.btn, #btn-del.btn{
+  color:#fff; background:var(--aq-red); border-color:var(--aq-red);
+}
+#btn-cancel.btn:hover, #btn-del.btn:hover{
+  background:var(--aq-red-600); border-color:var(--aq-red-600);
+}
+
+/* Variante outline souvent utilisée dans ton HTML */
+.btn-outline-primary{ color:var(--aq-primary); border-color:var(--aq-primary); }
+.btn-outline-primary:hover{ color:#fff; background:var(--aq-primary); border-color:var(--aq-primary); }
+.btn-outline-secondary{ color:var(--aq-slate); border-color:var(--aq-slate); }
+.btn-outline-secondary:hover{ color:#fff; background:var(--aq-slate); border-color:var(--aq-slate); }
+.btn-outline-info{ color:var(--aq-cyan); border-color:var(--aq-cyan); }
+.btn-outline-info:hover{ color:#fff; background:var(--aq-cyan); border-color:var(--aq-cyan); }
+.btn-outline-warning{ color:var(--aq-orange-600); border-color:var(--aq-orange-600); }
+.btn-outline-warning:hover{ color:#111; background:#fed7aa; border-color:var(--aq-orange-600); }
+.btn-outline-danger{ color:var(--aq-red); border-color:var(--aq-red); }
+.btn-outline-danger:hover{ color:#fff; background:var(--aq-red); border-color:var(--aq-red); }
+
+/* Badge minute */
+#live-clock.badge{ background:var(--aq-primary); }
+
+/* ====== Mobile & responsive ====== */
+@media (max-width: 992px){
+  .aq-container{ padding:10px; }
+  .aq-toolbar{ gap:6px; overflow:auto; }
+  .aq-toolbar .aq-btn{ padding:6px 10px; font-size:13px; }
+  .card .card-title{ font-size:1.05rem; }
+}
+
+/* Empiler proprement les champs sur petit écran */
+@media (max-width: 768px){
+  .row.g-2 > [class*="col-"]{ flex:0 0 100%; max-width:100%; }
+  .mt-2.d-flex{ gap:.5rem; }
+  .mt-2.d-flex .form-control-sm{ width:130px !important; }
+}
+
+/* Table scrollable sur mobile */
+.aq-table-scroll{ overflow-x:auto; }
+.aq-table-scroll table{ min-width: 780px; }
+
+/* Dropdown clubs: max hauteur moindre en mobile */
+@media (max-width: 480px){
+  .club-dropdown{ max-height: 200px; }
+  .aq-toolbar{ padding:8px; }
+}
+

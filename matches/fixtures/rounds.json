@@ -1,0 +1,10 @@
+[
+  {
+    "model": "matches.round",
+    "pk": 1,
+    "fields": {
+      "name": "Journée 1",
+      "date": "2025-08-10"
+    }
+  }
+]

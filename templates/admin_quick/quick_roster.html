@@ -1,0 +1,437 @@
+{# templates/admin_quick/quick_roster.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {% include "includes/admin_quick_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="aq-container">
+
+  {% include "includes/admin_quick_toolbar.html" with active="clubs" title="Effectif du club" %}
+
+  {% if messages %}
+    {% for m in messages %}
+      <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <style>
+    .club-header{
+      display:flex; align-items:center; gap:14px;
+      padding:12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; margin-bottom:12px;
+    }
+    .club-logo{
+      width:56px; height:56px; border-radius:12px; object-fit:contain; background:#f8fafc; border:1px solid #eef2f7;
+      display:flex; align-items:center; justify-content:center; font-weight:700; color:#475569;
+    }
+    .club-info{ display:flex; flex-direction:column; gap:2px; }
+    .club-title{ font-weight:700; font-size:1.1rem; }
+    .club-sub{ color:#6b7280; font-size:.9rem; }
+
+    .tabs{ display:flex; gap:8px; margin:10px 0 14px; flex-wrap:wrap; }
+    .tab-btn{ border:1px solid #e5e7eb; background:#fff; padding:6px 10px; border-radius:10px; cursor:pointer; }
+    .tab-btn.active{ background:#2563eb; border-color:#2563eb; color:#fff; }
+
+    .aq-table-scroll{ overflow-x:auto; }
+    .aq-table-scroll table{ min-width:820px; }
+    .player-avatar, .staff-avatar{ width:28px; height:28px; border-radius:50%; object-fit:cover; background:#f3f4f6; }
+
+    .table a{ text-decoration:none; }
+    .table a:hover{ text-decoration:underline; }
+
+    .edit-form-row{ background:#f8fafc; }
+    .badge-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+    .dot-on{ background:#10b981; }
+    .dot-off{ background:#ef4444; }
+
+    .action-inline { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .d-inline { display:inline-block; }
+  </style>
+
+  <div class="club-header">
+    <div class="club-logo">
+      {% if club.logo %}
+        <img src="{{ club.logo.url }}" alt="{{ club.name }}" style="width:56px;height:56px;border:none;">
+      {% else %}
+        {{ club.short_name|default:club.name|first|upper }}
+      {% endif %}
+    </div>
+    <div class="club-info">
+      <div class="club-title">{{ club.name }}</div>
+      <div class="club-sub">
+        {% if club.city %}{{ club.city }} • {% endif %}
+        {% if club.stadium %}{{ club.stadium }} • {% endif %}
+        {% if club.founded %}Fondé le {{ club.founded }}{% endif %}
+      </div>
+    </div>
+    <div class="ms-auto">
+      <a href="{% url 'quick_clubs' %}" class="btn btn-outline-secondary">← Tous les clubs</a>
+    </div>
+  </div>
+
+  {% if not staff_enabled %}
+    <div class="alert alert-warning mb-3">
+      L’onglet <strong>Staff</strong> est désactivé (table non migrée).
+    </div>
+  {% endif %}
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="players">Joueurs</button>
+    {% if staff_enabled %}
+      <button class="tab-btn" data-tab="staff">Staff</button>
+    {% endif %}
+  </div>
+
+  {# ===== JOUEURS ===== #}
+  <div id="tab-players">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h3 class="card-title mb-3">Ajouter un joueur</h3>
+        <form method="post" action="" enctype="multipart/form-data" class="vstack gap-3">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add_player">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Prénom</label>
+              <input name="first_name" class="form-control" placeholder="">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Nom</label>
+              <input name="last_name" class="form-control" placeholder="">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Poste</label>
+              <input name="position" class="form-control" placeholder="Ex: ATT / MIL / DEF / GK">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Numéro</label>
+              <input name="number" type="number" min="0" step="1" class="form-control" placeholder="Ex: 9">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">Photo (optionnel)</label>
+              <input name="photo" type="file" class="form-control">
+            </div>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary">Ajouter le joueur</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body p-0 aq-table-scroll">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>#</th><th>Photo</th><th>Nom</th><th>Poste</th><th>#</th><th>Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if players %}
+              {% for p in players %}
+                <tr class="player-row" data-id="{{ p.id }}">
+                  <td>{{ p.id }}</td>
+                  <td>{% if p.photo %}<img src="{{ p.photo.url }}" class="player-avatar" alt="">{% endif %}</td>
+                  <td><a href="#" class="edit-player" data-id="{{ p.id }}">{{ p.first_name }} {% if p.last_name %}{{ p.last_name }}{% endif %}</a></td>
+                  <td>{{ p.position|default:"-" }}</td>
+                  <td>{{ p.number|default:"-" }}</td>
+                  <td>
+                    {% if p.has_is_active %}
+                      <span class="badge-dot {% if p.active_state %}dot-on{% else %}dot-off{% endif %}"></span>
+                      {% if p.active_state %}Actif{% else %}Inactif{% endif %}
+                    {% else %}
+                      <em class="text-muted">N/A</em>
+                    {% endif %}
+                  </td>
+                </tr>
+
+                {# ---- ÉDITION INLINE JOUEUR (pas d'imbrication de <form>) ---- #}
+                <tr id="edit-form-{{ p.id }}" class="edit-form-row" style="display:none">
+                  <td colspan="6">
+                    <div class="action-inline">
+                      <form method="post" action="" enctype="multipart/form-data" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="edit_player">
+                        <input type="hidden" name="player_id" value="{{ p.id }}">
+
+                        <div class="row g-2 align-items-end">
+                          <div class="col-md-3">
+                            <label class="form-label">Prénom</label>
+                            <input name="first_name" class="form-control" value="{{ p.first_name }}">
+                          </div>
+                          <div class="col-md-3">
+                            <label class="form-label">Nom</label>
+                            <input name="last_name" class="form-control" value="{{ p.last_name }}">
+                          </div>
+                          <div class="col-md-2">
+                            <label class="form-label">Poste</label>
+                            <input name="position" class="form-control" value="{{ p.position }}">
+                          </div>
+                          <div class="col-md-2">
+                            <label class="form-label">Numéro</label>
+                            <input name="number" type="number" class="form-control" value="{{ p.number }}">
+                          </div>
+                          <div class="col-md-2">
+                            <label class="form-label">Photo</label>
+                            <input type="file" name="photo" class="form-control">
+                          </div>
+                          <div class="col-12 mt-2">
+                            <button type="submit" class="btn btn-success btn-sm">💾 Sauvegarder</button>
+                            <button type="button" class="btn btn-secondary btn-sm cancel-edit" data-id="{{ p.id }}">✖ Annuler</button>
+                          </div>
+                        </div>
+                      </form>
+
+                      {% if p.has_is_active %}
+                        <form method="post" action="" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="toggle_player_active">
+                          <input type="hidden" name="player_id" value="{{ p.id }}">
+                          <button type="submit" class="btn btn-warning btn-sm">
+                            {% if p.active_state %}⏸ Désactiver{% else %}▶ Activer{% endif %}
+                          </button>
+                        </form>
+                      {% endif %}
+
+                      <form method="post" action="" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_player">
+                        <input type="hidden" name="player_id" value="{{ p.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm btn-delete-player"
+                                data-player="{{ p.first_name }} {% if p.last_name %}{{ p.last_name }}{% endif %}">
+                          🗑️ Supprimer
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="6" class="text-muted">Aucun joueur pour l’instant.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if staff_enabled %}
+    {# ===== STAFF ===== #}
+    <div id="tab-staff" style="display:none">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h3 class="card-title mb-3">Ajouter un membre du staff</h3>
+          <form method="post" action="" enctype="multipart/form-data" class="vstack gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_staff">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Nom complet</label>
+                <input name="full_name" class="form-control" placeholder="" required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Rôle</label>
+                <select name="role" class="form-select">
+                  {% for code,label in staff_roles %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Téléphone</label>
+                <input name="phone" class="form-control" placeholder="">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Email</label>
+                <input name="email" type="email" class="form-control" placeholder="Ex: coach@club.gn">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Photo (optionnel)</label>
+                <input name="photo" type="file" class="form-control">
+              </div>
+            </div>
+            <div>
+              <button type="submit" class="btn btn-primary">Ajouter au staff</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body p-0 aq-table-scroll">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>#</th><th>Photo</th><th>Nom</th><th>Rôle</th><th>Contact</th><th>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if staff %}
+                {% for s in staff %}
+                  <tr class="staff-row" data-id="{{ s.id }}">
+                    <td>{{ s.id }}</td>
+                    <td>{% if s.photo %}<img src="{{ s.photo.url }}" class="staff-avatar" alt="">{% endif %}</td>
+                    <td><a href="#" class="edit-staff" data-id="{{ s.id }}">{{ s.full_name }}</a></td>
+                    <td>{{ s.get_role_display }}</td>
+                    <td>
+                      {% if s.phone %}<div>{{ s.phone }}</div>{% endif %}
+                      {% if s.email %}<div>{{ s.email }}</div>{% endif %}
+                    </td>
+                    <td>
+                      <span class="badge-dot {% if s.active_state %}dot-on{% else %}dot-off{% endif %}"></span>
+                      {% if s.active_state %}Actif{% else %}Inactif{% endif %}
+                    </td>
+                  </tr>
+
+                  {# ---- ÉDITION INLINE STAFF (actions non imbriquées) ---- #}
+                  <tr id="edit-staff-form-{{ s.id }}" class="edit-form-row" style="display:none">
+                    <td colspan="6">
+                      <div class="action-inline">
+                        <form method="post" action="" enctype="multipart/form-data" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="edit_staff">
+                          <input type="hidden" name="staff_id" value="{{ s.id }}">
+
+                          <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                              <label class="form-label">Nom complet</label>
+                              <input name="full_name" class="form-control" value="{{ s.full_name }}">
+                            </div>
+                            <div class="col-md-4">
+                              <label class="form-label">Rôle</label>
+                              <select name="role" class="form-select">
+                                {% for code,label in staff_roles %}
+                                  <option value="{{ code }}" {% if code == s.role %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                              </select>
+                            </div>
+                            <div class="col-md-2">
+                              <label class="form-label">Téléphone</label>
+                              <input name="phone" class="form-control" value="{{ s.phone }}">
+                            </div>
+                            <div class="col-md-2">
+                              <label class="form-label">Email</label>
+                              <input name="email" type="email" class="form-control" value="{{ s.email }}">
+                            </div>
+                            <div class="col-md-2">
+                              <label class="form-label">Photo</label>
+                              <input type="file" name="photo" class="form-control">
+                            </div>
+                            <div class="col-12 mt-2">
+                              <button type="submit" class="btn btn-success btn-sm">💾 Sauvegarder</button>
+                              <button type="button" class="btn btn-secondary btn-sm cancel-edit-staff" data-id="{{ s.id }}">✖ Annuler</button>
+                            </div>
+                          </div>
+                        </form>
+
+                        <form method="post" action="" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="toggle_staff_active">
+                          <input type="hidden" name="staff_id" value="{{ s.id }}">
+                          <button type="submit" class="btn btn-warning btn-sm">
+                            {% if s.active_state %}⏸ Désactiver{% else %}▶ Activer{% endif %}
+                          </button>
+                        </form>
+
+                        <form method="post" action="" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="delete_staff">
+                          <input type="hidden" name="staff_id" value="{{ s.id }}">
+                          <button type="submit" class="btn btn-danger btn-sm btn-delete-staff" data-staff="{{ s.full_name }}">
+                            🗑️ Supprimer
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="6" class="text-muted">Aucun membre du staff pour l’instant.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+
+<script>
+  // Tabs
+  const tabs = document.querySelectorAll('.tab-btn');
+  const panelPlayers = document.getElementById('tab-players');
+  const panelStaff   = document.getElementById('tab-staff');
+  function setTab(name){
+    tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    panelPlayers.style.display = (name === 'players') ? '' : 'none';
+    if (panelStaff) panelStaff.style.display = (name === 'staff') ? '' : 'none';
+    if (history.pushState){
+      const url = new URL(window.location.href);
+      url.hash = name;
+      history.replaceState(null, '', url);
+    }
+  }
+  tabs.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  if (location.hash === '#staff' && panelStaff) setTab('staff');
+
+  // Joueurs: ouvrir/fermer édition
+  function hideAllPlayerEditRows(){
+    document.querySelectorAll('.edit-form-row[id^="edit-form-"]').forEach(r => r.style.display = 'none');
+  }
+  document.querySelectorAll('.edit-player').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = link.dataset.id;
+      hideAllPlayerEditRows();
+      const row = document.getElementById('edit-form-' + id);
+      if (row) row.style.display = '';
+    });
+  });
+  document.querySelectorAll('.cancel-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const row = document.getElementById('edit-form-' + id);
+      if (row) row.style.display = 'none';
+    });
+  });
+
+  // Staff: ouvrir/fermer édition
+  function hideAllStaffEditRows(){
+    document.querySelectorAll('.edit-form-row[id^="edit-staff-form-"]').forEach(r => r.style.display = 'none');
+  }
+  document.querySelectorAll('.edit-staff').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = link.dataset.id;
+      hideAllStaffEditRows();
+      const row = document.getElementById('edit-staff-form-' + id);
+      if (row) row.style.display = '';
+    });
+  });
+  document.querySelectorAll('.cancel-edit-staff').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const row = document.getElementById('edit-staff-form-' + id);
+      if (row) row.style.display = 'none';
+    });
+  });
+
+  // Confirmations
+  document.querySelectorAll('.btn-delete-player').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const who = (btn.dataset.player || 'ce joueur').trim();
+      if (!confirm(`Supprimer ${who} ? Cette action est irréversible.`)) e.preventDefault();
+    });
+  });
+  document.querySelectorAll('.btn-delete-staff').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const who = (btn.dataset.staff || 'ce membre du staff').trim();
+      if (!confirm(`Supprimer ${who} ? Cette action est irréversible.`)) e.preventDefault();
+    });
+  });
+</script>
+{% endblock %}

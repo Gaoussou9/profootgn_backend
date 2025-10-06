@@ -1,0 +1,126 @@
+{# templates/admin_quick/quick_clubs.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {# charge la CSS commune des rapides #}
+  {% include "includes/admin_quick_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="aq-container">
+
+  {# Toolbar commune (active = clubs) #}
+  {% include "includes/admin_quick_toolbar.html" with active="clubs" title="Clubs rapides" %}
+
+  {% if messages %}
+    {% for m in messages %}
+      <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <style>
+    /* ====== Styles spécifiques à la page Clubs ====== */
+    .clubs-header{ display:flex; align-items:end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .clubs-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+    .club-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
+    @media (min-width: 576px){ .club-grid{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+    @media (min-width: 992px){ .club-grid{ grid-template-columns: repeat(5, minmax(0,1fr)); } }
+
+    .club-card{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff;
+      transition:transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+      cursor:pointer; text-decoration:none; color:inherit;
+    }
+    .club-card:hover{ transform: translateY(-1px); box-shadow:0 6px 18px rgba(0,0,0,.06); border-color:#d1d5db; }
+    .club-logo{
+      width:42px; height:42px; border-radius:10px; object-fit:contain; background:#f8fafc; border:1px solid #eef2f7;
+      display:flex; align-items:center; justify-content:center; font-weight:600; color:#475569;
+    }
+    .club-meta{ display:flex; flex-direction:column; min-width:0; }
+    .club-name{ font-weight:600; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .club-city{ font-size:.85rem; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .clubs-empty{ border:1px dashed #e5e7eb; border-radius:12px; padding:18px; text-align:center; color:#6b7280; background:#fafafa; }
+
+    /* barre de recherche compacte */
+    .clubs-search{ display:flex; gap:8px; flex-wrap:wrap; }
+    .clubs-search .form-control{ min-width:220px; }
+  </style>
+
+  <div class="card">
+    <div class="card-body">
+      <div class="clubs-header">
+        <form class="clubs-search" method="get" action="">
+          <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Rechercher un club… (ex: Horoya, Wakriya)" id="clubs-q">
+          <button class="btn btn-outline-primary" type="submit">Rechercher</button>
+          <button class="btn btn-outline-secondary" type="button" id="clubs-clear">Effacer</button>
+        </form>
+
+        <div class="clubs-actions">
+          <a href="{% url 'admin:clubs_club_add' %}" class="btn btn-primary">+ Nouveau club</a>
+          <a href="{% url 'admin:index' %}" class="btn btn-outline-secondary">Retour Admin</a>
+        </div>
+      </div>
+
+      {% if clubs %}
+        <div class="club-grid" id="club-grid">
+          {% for c in clubs %}
+            <a class="club-card" href="{% url 'quick_roster' c.id %}" data-name="{{ c.name|lower }}" data-city="{{ c.city|lower }}">
+              <div class="club-logo">
+                {% if c.logo %}
+                  <img src="{{ c.logo.url }}" alt="{{ c.name }}" class="club-logo" style="width:42px;height:42px;border:none;">
+                {% else %}
+                  {{ c.short_name|default:c.name|first|upper }}
+                {% endif %}
+              </div>
+              <div class="club-meta">
+                <div class="club-name" title="{{ c.name }}">{{ c.name }}</div>
+                <div class="club-city">{{ c.city }}</div>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="clubs-empty">
+          Aucun club trouvé. Utilise le bouton <strong>+ Nouveau club</strong> pour en créer un.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Filtre instantané côté client (en plus du filtre serveur ?q=…)
+  const qInput = document.getElementById('clubs-q');
+  const clearBtn = document.getElementById('clubs-clear');
+  const grid = document.getElementById('club-grid');
+  function clientFilter(){
+    if (!grid) return;
+    const q = (qInput.value || '').trim().toLowerCase();
+    const cards = grid.querySelectorAll('.club-card');
+    let shown = 0;
+    cards.forEach(card=>{
+      const hay = (card.dataset.name + ' ' + (card.dataset.city||'')).toLowerCase();
+      const ok = !q || hay.includes(q);
+      card.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    if (!shown){
+      // message vide rapide
+      grid.innerHTML = '<div class="clubs-empty" style="grid-column:1/-1">Aucun résultat côté client… essaie une autre recherche.</div>';
+    }
+  }
+  if (qInput) qInput.addEventListener('input', ()=>{ clientFilter(); });
+  if (clearBtn) clearBtn.addEventListener('click', ()=>{
+    qInput.value = '';
+    // Si tu veux effacer aussi le filtre serveur (param ?q), on peut rediriger :
+    const url = new URL(window.location.href);
+    url.searchParams.delete('q');
+    window.location.href = url.toString();
+  });
+  // première passe de filtre client si un q est déjà présent
+  clientFilter();
+</script>
+{% endblock %}

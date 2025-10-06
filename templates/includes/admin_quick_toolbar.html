@@ -1,0 +1,19 @@
+{# active: "match" | "events" | "lineups" | "players" | "clubs" #}
+<div class="aq-toolbar">
+  <div class="aq-title">{{ title|default:"Espace Rapide" }}</div>
+
+  <a href="{% url 'admin_quick_match' %}"
+     class="aq-btn {% if active == 'match' %}aq-btn--active{% endif %}">Matchs</a>
+
+  <a href="{% url 'admin_quick_events' %}"
+     class="aq-btn {% if active == 'events' %}aq-btn--active{% endif %}">Événements</a>
+
+  <a href="{% url 'admin_quick_lineups' %}"
+     class="aq-btn {% if active == 'lineups' %}aq-btn--active{% endif %}">Compos</a>
+
+  <a href="{% url 'admin_quick_players' %}"
+     class="aq-btn {% if active == 'players' %}aq-btn--active{% endif %}">Joueurs</a>
+
+  <a href="{% url 'quick_clubs' %}"
+     class="aq-btn aq-btn--primary {% if active == 'clubs' %}aq-btn--active{% endif %}">Clubs</a>
+</div>

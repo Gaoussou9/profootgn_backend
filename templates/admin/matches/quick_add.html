@@ -1,0 +1,448 @@
+{# templates/admin/matches/quick_add.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{# 🔹 charge la CSS des rapides #}
+{% block extrastyle %}
+  {% include "includes/admin_quick_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="aq-container">
+
+  {# 🔹 toolbar commune #}
+  {% include "includes/admin_quick_toolbar.html" with active="match" title="Espace Admin — LiveFootGN" %}
+
+  {# ---- Messages Django (inchangé) ---- #}
+  {% if messages %}
+    {% for m in messages %}
+      <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <style>
+    .club-picker{position:relative}
+    .club-dropdown{position:absolute;z-index:30;left:0;right:0;max-height:260px;overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:.5rem;box-shadow:0 12px 28px rgba(0,0,0,.08);display:none}
+    .club-item{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;cursor:pointer}
+    .club-item:hover{background:#f3f4f6}
+    .club-item img{width:28px;height:28px;object-fit:contain;border-radius:.375rem;background:#f9fafb}
+    .club-selected{display:flex;align-items:center;gap:.5rem}
+    .club-selected img{width:28px;height:28px;object-fit:contain;border-radius:.375rem;background:#f9fafb}
+    .match-row{cursor:pointer;}
+    .match-row.active{background:#eef6ff;}
+    /* table scroll (utilisé plus bas) */
+    .aq-table-scroll{ overflow-x:auto; }
+    .aq-table-scroll table{ min-width:780px; }
+  </style>
+
+  {# ===== Carte FORMULAIRE (pas de table ici) ===== #}
+  <div class="card">
+    <div class="card-body">
+      <h3 class="card-title mb-4">Ajouter un nouveau match</h3>
+
+      {# ⬇️ POST direct vers la vue Django #}
+      <form method="post" action="{% url 'admin_quick_match' %}" class="vstack gap-3">
+        {% csrf_token %}
+
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Équipe 1</label>
+            <div class="club-picker" id="picker-home">
+              <div class="club-selected mb-1" style="display:none">
+                <img alt="logo" />
+                <strong class="name"></strong>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 clear" title="Effacer">×</button>
+              </div>
+              <input type="text" class="form-control input" placeholder="Cliquer pour choisir…" autocomplete="off">
+              <input type="hidden" name="home_id" class="id">
+              <div class="club-dropdown list"></div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Équipe 2</label>
+            <div class="club-picker" id="picker-away">
+              <div class="club-selected mb-1" style="display:none">
+                <img alt="logo" />
+                <strong class="name"></strong>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 clear" title="Effacer">×</button>
+              </div>
+              <input type="text" class="form-control input" placeholder="Cliquer pour choisir…" autocomplete="off">
+              <input type="hidden" name="away_id" class="id">
+              <div class="club-dropdown list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Score équipe 1</label>
+            <input type="number" min="0" step="1" name="home_score" class="form-control" value="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Score équipe 2</label>
+            <input type="number" min="0" step="1" name="away_score" class="form-control" value="0">
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label">Minute</label>
+            <input type="number" min="0" step="1" name="minute" class="form-control" value="0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Statut</label>
+            <select name="status" class="form-select">
+              {% for code,label in STATUSES %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Journée</label>
+            <select name="round_id" class="form-select">
+              <option value="">(par défaut)</option>
+              {% for r in rounds %}
+                <option value="{{ r.id }}">J{{ r.number|default:r.id }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Date (MM-DD-YYYY HH:MM)</label>
+            <input name="kickoff_at" class="form-control" placeholder="20-0-2025 16:00">
+          </div>
+        </div>
+
+        <div class="mt-2 d-flex align-items-center flex-wrap gap-2">
+          <input id="match-id" class="form-control form-control-sm" style="width:160px" placeholder="ID du match" aria-label="ID du match">
+
+          <button type="submit" class="btn btn-primary">Ajouter le match</button>
+
+          <button id="btn-start"   type="button" class="btn btn-success"            disabled>Démarrer</button>
+          <button id="btn-pause"   type="button" class="btn btn-dark"               disabled>Pause (HT)</button>
+          <button id="btn-finish"  type="button" class="btn btn-outline-secondary"  disabled>Fin du match</button>
+
+          <span id="live-clock" class="badge bg-secondary ms-2" style="display:none">0'</span>
+
+          <button id="btn-edit"    type="button" class="btn btn-outline-primary"   disabled>Modifier / Edit</button>
+          <button id="btn-susp"    type="button" class="btn btn-outline-warning"   disabled>Suspendre</button>
+          <button id="btn-sched"   type="button" class="btn btn-outline-primary"   disabled>Prévu</button>
+          <button id="btn-post"    type="button" class="btn btn-outline-info"      disabled>Reporté</button>
+          <button id="btn-cancel"  type="button" class="btn btn-outline-danger"    disabled>Annulé</button>
+          <button id="btn-del"     type="button" class="btn btn-outline-danger"    disabled>Supprimer</button>
+        </div>
+        <small id="action-tip" class="text-muted d-block mt-1"></small>
+
+        <div class="text-muted mt-2">
+          Pour <strong>buts & cartons</strong>, utilise la page
+          <a href="{% url 'admin_quick_events' %}">Events (rapide)</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ===== Liste des matchs (avec scroll horizontal mobile) ===== #}
+  <h4 class="mt-4">Liste des derniers matchs</h4>
+  <div class="card">
+    <div class="card-body p-0 aq-table-scroll">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>#</th><th>Journée</th><th>Équipe 1</th><th>Équipe 2</th>
+            <th>Score</th><th>Minute</th><th>Statut</th><th>Buteur (texte)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in matches %}
+            <tr class="match-row" data-id="{{ m.id }}">
+              <td>{{ m.id }}</td>
+              <td>{% if m.round %}J{{ m.round.number|default:m.round.id }}{% else %}-{% endif %}</td>
+              <td>{{ m.home_club.name }}</td>
+              <td>{{ m.away_club.name }}</td>
+              <td>{{ m.home_score }}–{{ m.away_score }}</td>
+              <td>{{ m.minute }}</td>
+              <td>{{ m.status }}</td>
+              <td>{{ m.buteur }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="8" class="text-muted">Aucun match</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div> {# /aq-container #}
+
+<script>
+function getCSRF(){const m=document.cookie.match(/csrftoken=([^;]+)/);return m?m[1]:"";}
+const $=id=>document.getElementById(id);
+
+let currentMatchId=null, liveTimer=null, liveMinute=0, isPaused=false;
+const TICK_MS=60000;
+
+function stopTicker(){ if(liveTimer){ clearInterval(liveTimer); liveTimer=null; } }
+function startTicker(){
+  stopTicker();
+  liveTimer=setInterval(async()=>{
+    if(isPaused) return;
+    liveMinute = Math.min(liveMinute + 1, 90);
+    $('live-clock').textContent = `${liveMinute}'`;
+    const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`);
+    if(row){ row.querySelectorAll('td')[5].textContent = liveMinute; }
+    if(liveMinute >= 90){
+      stopTicker();
+      const r = await postForm('/api/modifier.py', { id: currentMatchId, minute: 90, status: 'FT' });
+      $('action-tip').textContent = r.ok ? `Match ${currentMatchId} terminé (90', FT).` : `Fin de match: échec de mise à jour.`;
+      $('live-clock').style.display = 'none';
+      if(row){ row.querySelectorAll('td')[6].textContent = 'FT'; }
+      return;
+    }
+    await postForm('/api/modifier.py', { id: currentMatchId, minute: liveMinute, status: 'LIVE' });
+  }, TICK_MS);
+}
+
+let CLUBS_CACHE=null;
+async function fetchClubs(){
+  if(CLUBS_CACHE) return CLUBS_CACHE;
+  const r = await fetch('/admin/clubs/quick/api/');  // ✅ endpoint admin
+  if(!r.ok){ console.warn('clubs api error', r.status); return []; }
+  const data = await r.json();
+  CLUBS_CACHE = Array.isArray(data) ? data : [];
+  return CLUBS_CACHE;
+}
+function renderList(el, items){
+  el.innerHTML = items.map(c => `
+    <div class="club-item" data-id="${c.id}" data-name="${c.name}" data-logo="${c.logo||''}">
+      <img src="${c.logo||''}" alt=""><span>${c.name}</span>
+    </div>
+  `).join('');
+}
+function installPicker(root){
+  const input = root.querySelector('.input');
+  const list  = root.querySelector('.list');
+  const idFld = root.querySelector('.id');
+  const sel   = root.querySelector('.club-selected');
+  const selImg= sel.querySelector('img');
+  const selNm = sel.querySelector('.name');
+  const btnClr= sel.querySelector('.clear');
+  let all = [];
+  const open = ()=>{ list.style.display='block'; };
+  const close= ()=>{ list.style.display='none'; };
+
+  fetchClubs().then(clubs => { all = clubs; renderList(list, all); });
+
+  input.addEventListener('focus', open);
+  input.addEventListener('click', open);
+  document.addEventListener('click', (e)=>{ if(!root.contains(e.target)) close(); });
+
+  input.addEventListener('input', ()=>{
+    const q = input.value.toLowerCase().trim();
+    const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q)) : all;
+    renderList(list, filtered); open();
+  });
+
+  list.addEventListener('click', (e)=>{
+    const item = e.target.closest('.club-item'); if(!item) return;
+    const id = item.dataset.id, name = item.dataset.name, logo = item.dataset.logo || '';
+    idFld.value = id; input.value = name; selImg.src = logo || ''; selNm.textContent = name; sel.style.display = 'flex'; close();
+  });
+
+  btnClr.addEventListener('click', ()=>{ idFld.value = ''; input.value = ''; sel.style.display = 'none'; });
+}
+installPicker(document.getElementById('picker-home'));
+installPicker(document.getElementById('picker-away'));
+function setPicker(selector, id, name, logo){
+  const root = document.querySelector(selector);
+  if(!root) return;
+  root.querySelector('.id').value = id || '';
+  root.querySelector('.input').value = name || '';
+  const sel = root.querySelector('.club-selected');
+  sel.querySelector('img').src = logo || '';
+  sel.querySelector('.name').textContent = name || '';
+  sel.style.display = name ? 'flex' : 'none';
+}
+
+function isoToLocalText(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+async function loadMatch(id){
+  const r = await fetch(`/api/matches/${id}/`);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const m = await r.json();
+
+  setPicker('#picker-home', m.home_club, m.home_club_name, m.home_club_logo);
+  setPicker('#picker-away', m.away_club, m.away_club_name, m.away_club_logo);
+
+  document.querySelector('input[name="home_score"]').value = m.home_score ?? 0;
+  document.querySelector('input[name="away_score"]').value = m.away_score ?? 0;
+  document.querySelector('input[name="minute"]').value     = m.minute ?? 0;
+  document.querySelector('select[name="status"]').value    = m.status || 'SCHEDULED';
+  document.querySelector('select[name="round_id"]').value  = m.round || '';
+  document.querySelector('input[name="kickoff_at"]').value = isoToLocalText(m.datetime);
+
+  const status = (m.status || '').toUpperCase();
+  liveMinute = parseInt(m.minute || 0, 10) || 0;
+  const badge = $('live-clock');
+
+  if (status === 'LIVE' && liveMinute < 90) {
+    isPaused = false; badge.style.display = ''; badge.textContent = `${liveMinute}'`; $('btn-pause').textContent = 'Pause (HT)';
+  } else if (status === 'HT') {
+    isPaused = true; if (liveMinute < 45) liveMinute = 45; badge.style.display = ''; badge.textContent = `45'`; $('btn-pause').textContent = 'Reprendre 2ᵉ MT';
+  } else {
+    isPaused = false; badge.style.display = 'none';
+  }
+}
+
+function enableActions(on,msg=""){
+  ['btn-edit','btn-del','btn-susp','btn-start','btn-pause','btn-finish','btn-sched','btn-post','btn-cancel'].forEach(id=>$(id).disabled=!on);
+  $('action-tip').textContent = on ? `Actions prêtes pour le match ID ${msg||currentMatchId}` : '';
+}
+async function postForm(url,obj){
+  const fd=new FormData();
+  Object.entries(obj).forEach(([k,v])=> v!==undefined && v!==null && fd.append(k,v));
+  const r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':getCSRF()},body:fd});
+  try{return await r.json();}catch{return {};}
+}
+
+document.querySelectorAll('tr.match-row').forEach(tr=>{
+  tr.addEventListener('click', async ()=>{
+    document.querySelectorAll('tr.match-row').forEach(x=>x.classList.remove('active'));
+    tr.classList.add('active');
+    const id = tr.dataset.id;
+    currentMatchId = id;
+    $('match-id').value = id;
+    enableActions(true, id);
+    try{
+      await loadMatch(id);
+      $('action-tip').textContent = `Match ${id} chargé. Tu peux modifier / mettre en pause / reprendre / finir / changer de statut.`;
+    }catch(e){
+      $('action-tip').textContent = `Impossible de charger le match ${id}.`;
+    }
+  });
+});
+
+
+function readForm(){
+  const homePicker = document.querySelector('#picker-home');
+  const awayPicker = document.querySelector('#picker-away');
+  return {
+    id: currentMatchId,
+    home_id:  homePicker?.querySelector('.id')?.value || '',
+    away_id:  awayPicker?.querySelector('.id')?.value || '',
+    home_name: homePicker?.querySelector('.input')?.value || '',
+    away_name: awayPicker?.querySelector('.input')?.value || '',
+    home_score: document.querySelector('input[name="home_score"]').value || 0,
+    away_score: document.querySelector('input[name="away_score"]').value || 0,
+    minute:     document.querySelector('input[name="minute"]').value || 0,
+    status:     document.querySelector('select[name="status"]').value || 'SCHEDULED',
+    round_id:   document.querySelector('select[name="round_id"]').value || '',
+    kickoff_at: document.querySelector('input[name="kickoff_at"]').value || ''
+  };
+}
+function updateRowFromPayload(row, p){
+  if(!row) return;
+  const tds = row.querySelectorAll('td');
+  if (tds[2]) tds[2].textContent = p.home_name || tds[2].textContent;
+  if (tds[3]) tds[3].textContent = p.away_name || tds[3].textContent;
+  if (tds[4]) tds[4].textContent = `${p.home_score||0}–${p.away_score||0}`;
+  if (tds[5]) tds[5].textContent = `${p.minute||0}`;
+  if (tds[6]) tds[6].textContent = (p.status||'').toUpperCase();
+}
+
+$('btn-edit').addEventListener('click', async ()=>{
+  if(!currentMatchId) return alert("Clique d’abord une ligne de la liste des matchs.");
+  const payload = readForm();
+  const res = await postForm('/api/modifier.py', payload);
+  if(!res || !res.ok){
+    alert("Impossible de modifier le match.");
+    return;
+  }
+  $('action-tip').textContent = `Match ${currentMatchId} mis à jour.`;
+  const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`);
+  updateRowFromPayload(row, payload);
+
+  // Gestion horloge selon statut
+  const st = (payload.status||'').toUpperCase();
+  if (st === 'LIVE'){
+    isPaused = false;
+    liveMinute = parseInt(payload.minute||'0',10) || 0;
+    $('live-clock').style.display=''; $('live-clock').textContent = `${liveMinute}'`;
+    startTicker();
+  } else if (st === 'HT'){
+    stopTicker(); isPaused = true;
+    liveMinute = Math.max(parseInt(payload.minute||'45',10)||45, 45);
+    $('live-clock').style.display=''; $('live-clock').textContent = `45'`;
+  } else {
+    stopTicker(); isPaused = false;
+    $('live-clock').style.display='none';
+  }
+});
+
+
+
+$('btn-del').addEventListener('click',async()=>{ if(!currentMatchId) return alert("Saisis un ID ou ajoute un match.");
+  if(!confirm(`Supprimer le match ${currentMatchId} ?`)) return;
+  const j=await postForm('/api/supprimer.py',{id:currentMatchId});
+  if(j.ok){ $('action-tip').textContent=`Match ${currentMatchId} supprimé.`; enableActions(false); stopTicker(); $('live-clock').style.display = 'none';
+    const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if(row) row.remove();
+  } else { alert('Suppression impossible.'); }});
+
+$('btn-susp').addEventListener('click',async()=>{ if(!currentMatchId) return alert("Saisis un ID ou ajoute un match.");
+  const j=await postForm('/api/suspendre.py',{id:currentMatchId});
+  if(j.ok){ $('action-tip').textContent=`Match ${currentMatchId} suspendu.`; stopTicker(); $('live-clock').style.display = 'none';
+    const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if(row){ row.querySelectorAll('td')[6].textContent = 'SUSPENDED'; }
+  } else { alert('Suspension impossible.'); }});
+
+$('btn-start').addEventListener('click',async()=>{ if(!currentMatchId) return alert("Saisis un ID ou ajoute un match.");
+  liveMinute=parseInt(document.querySelector('input[name="minute"]').value||'0',10)||0;
+  isPaused=false; $('btn-pause').textContent='Pause (HT)';
+  const j=await postForm('/api/modifier.py',{id:currentMatchId,status:'LIVE',minute:liveMinute});
+  if(!j.ok) return alert('Impossible de démarrer.');
+  $('action-tip').textContent=`Match ${currentMatchId} en cours… (LIVE)`; $('live-clock').style.display = ''; $('live-clock').textContent = `${liveMinute}'`; startTicker(); });
+
+$('btn-pause').addEventListener('click', async ()=>{ if(!currentMatchId) return;
+  if(!isPaused){ isPaused = true; stopTicker(); if(liveMinute < 45) liveMinute = 45; $('live-clock').style.display=''; $('live-clock').textContent = `45'`; $('btn-pause').textContent = 'Reprendre 2ᵉ MT';
+    const r = await postForm('/api/modifier.py', { id: currentMatchId, status: 'HT', minute: liveMinute });
+    const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if(row){ const tds=row.querySelectorAll('td'); tds[5].textContent = liveMinute; tds[6].textContent = 'HT'; }
+    $('action-tip').textContent = r.ok ? `Mi-temps pour le match ${currentMatchId}.` : `Erreur pour passer en HT.`;
+  }else{ isPaused = false; if(liveMinute < 45) liveMinute = 45; $('btn-pause').textContent = 'Pause (HT)'; $('live-clock').style.display=''; $('live-clock').textContent = `${liveMinute}'`;
+    const r = await postForm('/api/modifier.py', { id: currentMatchId, status: 'LIVE', minute: liveMinute });
+    const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if(row){ row.querySelectorAll('td')[6].textContent = 'LIVE'; }
+    $('action-tip').textContent = r.ok ? `Reprise de la 2ᵉ mi-temps pour le match ${currentMatchId}.` : `Erreur pour reprendre la 2ᵉ MT.`; startTicker(); }});
+
+$('btn-finish').addEventListener('click', async () => { if (!currentMatchId) return alert("Saisis un ID ou clique une ligne.");
+  stopTicker(); isPaused = false;
+  const r = await postForm('/api/modifier.py', { id: currentMatchId, status: 'FT', minute: 90 });
+  if (!r.ok) return alert("Impossible de terminer le match.");
+  liveMinute = 90; document.querySelector('input[name="minute"]').value = 90; document.querySelector('select[name="status"]').value = 'FT';
+  $('action-tip').textContent = `Match ${currentMatchId} terminé (FT).`; $('live-clock').style.display = 'none';
+  const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if (row) { const tds = row.querySelectorAll('td'); tds[5].textContent = '90'; tds[6].textContent = 'FT'; }});
+
+$('btn-sched').addEventListener('click', async ()=>{ if (!currentMatchId) return alert("Saisis un ID ou clique une ligne.");
+  stopTicker(); isPaused = false; const r = await postForm('/api/modifier.py', { id: currentMatchId, status: 'SCHEDULED', minute: 0 });
+  if(!r.ok) return alert("Impossible de passer en Prévu."); liveMinute = 0;
+  document.querySelector('input[name="minute"]').value = 0; document.querySelector('select[name="status"]').value = 'SCHEDULED';
+  $('live-clock').style.display = 'none'; $('action-tip').textContent = `Match ${currentMatchId} marqué comme Prévu.`;
+  const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if (row) { const tds = row.querySelectorAll('td'); tds[5].textContent = '0'; tds[6].textContent = 'SCHEDULED'; }});
+
+$('btn-post').addEventListener('click', async ()=>{ if (!currentMatchId) return alert("Saisis un ID ou clique une ligne.");
+  stopTicker(); isPaused = false; const r = await postForm('/api/modifier.py', { id: currentMatchId, status: 'POSTPONED' });
+  if(!r.ok) return alert("Impossible de passer en Reporté."); document.querySelector('select[name="status"]').value = 'POSTPONED';
+  $('live-clock').style.display = 'none'; $('action-tip').textContent = `Match ${currentMatchId} marqué comme Reporté.`;
+  const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if (row) { row.querySelectorAll('td')[6].textContent = 'POSTPONED'; }});
+
+$('btn-cancel').addEventListener('click', async ()=>{ if (!currentMatchId) return alert("Saisis un ID ou clique une ligne.");
+  stopTicker(); isPaused = false; const r = await postForm('/api/modifier.py', { id: currentMatchId, status: 'CANCELED' });
+  if(!r.ok) return alert("Impossible de passer en Annulé."); document.querySelector('select[name="status"]').value = 'CANCELED';
+  $('live-clock').style.display = 'none'; $('action-tip').textContent = `Match ${currentMatchId} marqué comme Annulé.`;
+  const row = document.querySelector(`tr.match-row[data-id="${currentMatchId}"]`); if (row) { row.querySelectorAll('td')[6].textContent = 'CANCELED'; }});
+</script>
+{% endblock %}

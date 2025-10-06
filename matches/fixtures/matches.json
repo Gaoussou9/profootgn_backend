@@ -1,0 +1,17 @@
+[
+  {
+    "model": "matches.match",
+    "pk": 1,
+    "fields": {
+      "round": 1,
+      "datetime": "2025-08-10T16:00:00Z",
+      "home_club": 1,
+      "away_club": 2,
+      "home_score": 1,
+      "away_score": 0,
+      "status": "FINISHED",
+      "minute": 90,
+      "venue": "Stade du 28 Septembre"
+    }
+  }
+]

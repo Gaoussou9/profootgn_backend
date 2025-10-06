@@ -1,0 +1,531 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  <style>
+    /* ===== Toolbar rapide ===== */
+    .aq-toolbar{display:flex;gap:.5rem;align-items:center;margin:0 0 12px}
+    .aq-title{margin-right:auto;font-weight:700;font-size:14px;color:#111827}
+    .aq-btn{display:inline-block;padding:.45rem .9rem;border-radius:12px;border:1px solid #e5e7eb;
+            background:#fff;color:#2563eb;font-weight:600;text-decoration:none}
+    .aq-btn:hover{background:#f8fafc}
+    .aq-btn--primary{color:#1f2937}
+    .aq-btn--active{box-shadow:0 0 0 3px rgba(37,99,235,.15) inset}
+
+    /* ===== Mise en page ===== */
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:.5rem}
+    .card .card-body{padding:16px}
+    .rowhead{font-weight:600;margin:6px 0 8px}
+    .player-row{display:grid;grid-template-columns:1.6fr .9fr .6fr .3fr;gap:8px;margin-bottom:6px}
+    .player-row select,
+    .player-row input[type=text],
+    .player-row input[type=number]{width:100%}
+    .section-title{font-size:1.1rem;font-weight:700;margin:12px 0 6px}
+    .muted{color:#6b7280}
+    .stack{display:flex;flex-direction:column;gap:8px}
+    .toolbar{display:flex;gap:8px;align-items:center;margin:8px 0 16px}
+    .button{padding:.45rem .8rem;border:1px solid #d1d5db;border-radius:.375rem;background:#f9fafb}
+    .button.primary{background:#2563eb;color:#fff;border-color:#2563eb}
+    .badge{display:inline-block;padding:.15rem .45rem;border-radius:.25rem;background:#eef2ff;color:#3730a3;font-size:.75rem}
+    .minihelp{font-size:.8rem}
+
+    /* ===== Étoile MOTM ===== */
+    .motm-star{
+      display:inline-block;
+      margin-left:.35rem;
+      font-size:1.05rem;
+      line-height:1;
+      color:#D4AF37;           /* Or */
+      filter: drop-shadow(0 1px 0 rgba(0,0,0,.12));
+    }
+    .motm-star[hidden]{ display:none; }
+
+    /* ===== Couleurs des notes ===== */
+    .rating-low{  color:#dc2626; font-weight:700; }  /* < 5  -> rouge */
+    .rating-mid{  color:#2563eb; font-weight:700; }  /* 5–7.49 -> bleu */
+    .rating-high{ color:#16a34a; font-weight:700; }  /* >= 7.5 -> vert */
+
+    /* Confort input note */
+    .inp-rating{
+      text-align:center;
+      border:1px solid #d1d5db;
+      border-radius:.375rem;
+      padding:.35rem .4rem;
+    }
+    .inp-rating:focus{ outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:#93c5fd; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <!-- Toolbar inline -->
+  <div class="aq-toolbar">
+    <div class="aq-title"><small style="color:#9CA3AF"></small></div>
+
+    <a href="{% url 'admin_quick_match' %}"   class="aq-btn">Matchs</a>
+    <a href="{% url 'admin_quick_events' %}"  class="aq-btn">Événements</a>
+    <a href="{% url 'admin_quick_lineups' %}" class="aq-btn aq-btn--active">Compos</a>
+    <a href="{% url 'admin_quick_players' %}" class="aq-btn">Joueurs</a>
+    <a href="{% url 'quick_clubs' %}"         class="aq-btn aq-btn--primary">Clubs</a>
+  </div>
+
+  
+
+  <form id="lineup-form" method="post">
+    {% csrf_token %}
+
+    <div class="toolbar">
+      <label class="me-2"><strong>Match</strong> :</label>
+      <select id="match-select" name="match_id" required>
+        <option value="">— choisir —</option>
+        {% for m in matches %}
+          <option value="{{ m.id }}"
+                  data-home="{{ m.home_club_id }}"
+                  data-home-name="{{ m.home_club.name }}"
+                  data-away="{{ m.away_club_id }}"
+                  data-away-name="{{ m.away_club.name }}">
+            {{ m.id }} — {{ m.home_club.name }} vs {{ m.away_club.name }} ({{ m.datetime|date:"Y-m-d H:i" }})
+          </option>
+        {% endfor %}
+      </select>
+
+      <label class="ms-3">
+        <input type="checkbox" name="replace" value="1" checked> Remplacer existant ?
+      </label>
+
+      <span id="clubs-pill" class="badge" style="display:none"></span>
+
+      <!-- Bouton Enregistrer les notes (TOP) -->
+      <button type="button" id="btn-save-ratings-top" class="button" style="margin-left:auto">
+        Enregistrer les notes
+      </button>
+    </div>
+
+    <!-- Conteneur principal -->
+    <div class="grid2">
+      <!-- Domicile -->
+      <div class="card" data-side="home">
+        <div class="card-body">
+          <div class="section-title" id="home-title">Équipe Domicile</div>
+
+          <div class="rowhead">XI titulaire</div>
+          <div id="home-xi" class="stack"></div>
+
+          <div class="rowhead mt-2">Remplaçants</div>
+          <div id="home-bench" class="stack"></div>
+
+          <div class="grid2" style="margin-top:8px">
+            <div>
+              <label class="minihelp">Formation</label>
+              <input type="text" name="home_formation" class="form-control" placeholder="4-3-3">
+            </div>
+            <div>
+              <label class="minihelp">Coach</label>
+              <input type="text" name="home_coach" class="form-control" placeholder="Nom coach">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Extérieur -->
+      <div class="card" data-side="away">
+        <div class="card-body">
+          <div class="section-title" id="away-title">Équipe Extérieur</div>
+
+          <div class="rowhead">XI titulaire</div>
+          <div id="away-xi" class="stack"></div>
+
+          <div class="rowhead mt-2">Remplaçants</div>
+          <div id="away-bench" class="stack"></div>
+
+          <div class="grid2" style="margin-top:8px">
+            <div>
+              <label class="minihelp">Formation</label>
+              <input type="text" name="away_formation" class="form-control" placeholder="4-2-3-1">
+            </div>
+            <div>
+              <label class="minihelp">Coach</label>
+              <input type="text" name="away_coach" class="form-control" placeholder="Nom coach">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zones cachées pour la vue POST (remplies en JS avant submit) -->
+    <textarea name="home_xi" id="tx-home-xi" hidden></textarea>
+    <textarea name="home_bench" id="tx-home-bench" hidden></textarea>
+    <textarea name="away_xi" id="tx-away-xi" hidden></textarea>
+    <textarea name="away_bench" id="tx-away-bench" hidden></textarea>
+
+    <div class="mt-3">
+      <button type="submit" class="button primary">Enregistrer</button>
+      <button type="button" id="btn-save-ratings-bottom" class="button" style="margin-left:.5rem">
+        Enregistrer les notes
+      </button>
+      <span class="muted minihelp ms-2">
+        « Enregistrer » crée/maj les compos (joueurs, postes, capitaine).  
+        « Enregistrer les notes » met à jour uniquement les notes des lignes déjà existantes.
+      </span>
+    </div>
+  </form>
+
+  <!-- ===== Script (charge & pré-remplit — et sauvegarde les notes) ===== -->
+  <script>
+  (function(){
+    const DEBUG = true;
+    const dlog = (...a)=>DEBUG&&console.log('[lineups]', ...a);
+
+    /* ---------- DOM helpers ---------- */
+    const el  = (q, r=document)=>r.querySelector(q);
+    const els = (q, r=document)=>Array.from(r.querySelectorAll(q));
+    const opt = (v,t)=>{const o=document.createElement('option'); o.value=v; o.textContent=t; return o; };
+    const POS = ["GK","RB","CB","LB","RWB","LWB","DM","CM","AM","RW","LW","ST","CF"];
+
+    // CSRF
+    function getCsrf() {
+      const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+      if (m) return decodeURIComponent(m[1]);
+      const inp = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      return inp ? inp.value : "";
+    }
+
+    function optionHTML(label, value){ return `<option value="${value||''}">${label}</option>`; }
+
+    function mkRow(side, isStarting){
+      const id = Math.random().toString(36).slice(2,7);
+      const html = `
+        <div class="player-row" data-side="${side}" data-start="${isStarting?'1':'0'}" data-lineup-id="">
+          <div style="display:flex;align-items:center;gap:.35rem">
+            <select class="sel-player lineup-player" required>
+              <option value="">— joueur —</option>
+            </select>
+            <span class="motm-star" title="Homme du match" hidden>★</span>
+          </div>
+          <input type="text" class="inp-pos" list="poslist" placeholder="Poste" />
+          <input type="number" class="inp-rating" min="0" max="10" step="0.1" placeholder="Note"/>
+          <label class="minihelp" title="Capitaine"><input id="cap-${side}-${id}" type="checkbox" class="chk-cap"> C</label>
+        </div>`;
+      const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild;
+    }
+
+    // datalist postes (une seule fois)
+    (function ensureDatalist(){
+      if (!document.getElementById('poslist')) {
+        const dl = document.createElement('datalist');
+        dl.id = 'poslist';
+        dl.innerHTML = POS.map(p=>`<option value="${p}">`).join("");
+        document.body.appendChild(dl);
+      }
+    })();
+
+    const zones = {
+      homeXi:   document.getElementById('home-xi'),
+      homeBn:   document.getElementById('home-bench'),
+      awayXi:   document.getElementById('away-xi'),
+      awayBn:   document.getElementById('away-bench'),
+    };
+
+    /* ---------- API helpers ---------- */
+    async function fetchJSON(url){
+      const res = await fetch(url, { credentials:'same-origin' });
+      if(!res.ok){
+        const txt = await res.text().catch(()=>'(no body)');
+        console.error('HTTP', res.status, url, txt);
+        throw new Error(`HTTP ${res.status} on ${url}`);
+      }
+      return res.json();
+    }
+    function getMatchSelect(){ return el('#match-select') || el('select[name="match_id"]') || el('select[name="match"]'); }
+    function parseMatchId(raw){ if (!raw) return null; const m = String(raw).match(/^(\d+)/); return m ? m[1] : null; }
+
+    async function getLineupsList(matchId){
+      const api = "{% url 'admin_quick_lineups_api' %}";
+      const u = new URL(api, window.location.origin);
+      u.searchParams.set('action','list');
+      u.searchParams.set('match_id', String(matchId));
+      return fetchJSON(u.toString()); // {home:{club_id, xi|bench, info}, away:{...}}
+    }
+
+    async function apiPlayersAdmin(clubId){
+      if(!clubId) return [];
+      const url = new URL(`/admin/clubs/${clubId}/players/`, window.location.origin).toString();
+      const j = await fetchJSON(url);
+      return Array.isArray(j.players) ? j.players : [];
+    }
+
+    function fillPlayers(select, players){
+      const cur = select.value;
+      const html = [optionHTML("— joueur —","")]
+        .concat(players.map(p => optionHTML(p.name || (`Joueur #${p.id}`), p.id)))
+        .join("");
+      select.innerHTML = html;
+      if (cur) select.value = cur;
+    }
+
+    // essaie de retrouver player_id si absent (par numéro, puis par nom)
+    function resolvePlayerId(preRow, players){
+      if (preRow.player_id) return preRow.player_id;
+      const num = preRow.number;
+      if (num != null) {
+        const hit = players.find(p => String(p.number || '') === String(num));
+        if (hit) return hit.id;
+      }
+      const name = (preRow.name || preRow.player_name || '').trim().toLowerCase();
+      if (name){
+        let hit = players.find(p => (p.name||'').trim().toLowerCase() === name);
+        if (hit) return hit.id;
+        hit = players.find(p => {
+          const full = [p.first_name, p.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+          return full && full === name;
+        });
+        if (hit) return hit.id;
+      }
+      return '';
+    }
+
+    function buildSection(container, count, side, players, preRows){
+      const isXi = (container===zones.homeXi || container===zones.awayXi);
+      const needed = Math.max(count, (preRows||[]).length || 0);
+      container.innerHTML = "";
+      for(let i=0;i<needed;i++){
+        const row = mkRow(side, isXi);
+        container.appendChild(row);
+        fillPlayers(row.querySelector('.sel-player'), players);
+        const pre = preRows && preRows[i];
+        if (pre){
+          // attache lineup.id pour pouvoir sauver la note
+          if (pre.id != null) row.dataset.lineupId = String(pre.id);
+          const pid = resolvePlayerId(pre, players);
+          if (pid) row.querySelector('.sel-player').value = String(pid);
+          row.querySelector('.inp-pos').value = pre.position || '';
+          if (pre.rating != null) row.querySelector('.inp-rating').value = pre.rating;
+          row.querySelector('.chk-cap').checked = !!pre.is_captain;
+        }
+      }
+    }
+
+    function setTitles(homeName, awayName){
+      const ht = document.getElementById('home-title');
+      const at = document.getElementById('away-title');
+      if (ht) ht.textContent = homeName ? `Équipe Domicile — ${homeName}` : 'Équipe Domicile';
+      if (at) at.textContent = awayName ? `Équipe Extérieur — ${awayName}` : 'Équipe Extérieur';
+    }
+
+    async function onMatchChange(){
+      const sel = getMatchSelect();
+      const rawId = sel?.value;
+      const matchId = parseMatchId(rawId);
+      if(!matchId){
+        Object.values(zones).forEach(z=>z.innerHTML="");
+        document.getElementById('clubs-pill').style.display='none';
+        setTitles('', '');
+        return;
+      }
+
+      // Data-* de l’option
+      const optEl = sel.selectedOptions[0];
+      let homeId   = optEl?.dataset.home,   awayId   = optEl?.dataset.away;
+      let homeName = optEl?.dataset.homeName, awayName = optEl?.dataset.awayName;
+
+      // Récupère la liste complète (clubs + lineups)
+      let lst;
+      try{ lst = await getLineupsList(matchId); }
+      catch(e){ console.error(e); alert("Impossible de lire les lineups via /admin/lineups/api/."); return; }
+
+      const homeBlock = lst.home || {}, awayBlock = lst.away || {};
+      homeId   = homeId   || homeBlock.club_id || homeBlock.id;
+      awayId   = awayId   || awayBlock.club_id || awayBlock.id;
+      homeName = homeName || homeBlock.club_name;
+      awayName = awayName || awayBlock.club_name;
+
+      const pill = document.getElementById('clubs-pill');
+      pill.style.display = '';
+      pill.textContent = `${homeName||'Domicile'} / ${awayName||'Extérieur'}`;
+      setTitles(homeName||'', awayName||'');
+
+      // placeholders "Chargement..."
+      [...els('.lineup-player')].forEach(s => {
+        if (!s.options.length) s.appendChild(opt('', 'Chargement...'));
+      });
+
+      // Charge joueurs
+      let homePlayers=[], awayPlayers=[];
+      try{
+        [homePlayers, awayPlayers] = await Promise.all([
+          apiPlayersAdmin(homeId),
+          apiPlayersAdmin(awayId),
+        ]);
+      }catch(e){ console.error(e); alert("Impossible de charger les joueurs."); return; }
+
+      // Compos existantes
+      const homeXi   = homeBlock.xi || homeBlock.starters || [];
+      const homeBn   = homeBlock.bench || [];
+      const awayXi   = awayBlock.xi || awayBlock.starters || [];
+      const awayBn   = awayBlock.bench || [];
+
+      // Formation / coach si présents
+      const hInfo = homeBlock.info || {}, aInfo = awayBlock.info || {};
+      if ((hInfo.formation||"").trim()) el('input[name="home_formation"]').value = hInfo.formation.trim();
+      if ((hInfo.coach_name||"").trim()) el('input[name="home_coach"]').value    = hInfo.coach_name.trim();
+      if ((aInfo.formation||"").trim()) el('input[name="away_formation"]').value = aInfo.formation.trim();
+      if ((aInfo.coach_name||"").trim()) el('input[name="away_coach"]').value    = aInfo.coach_name.trim();
+
+      // Construit 11 + 7 en préremplissant
+      buildSection(zones.homeXi, 11, 'home', homePlayers, homeXi);
+      buildSection(zones.homeBn, 7,  'home', homePlayers, homeBn);
+      buildSection(zones.awayXi, 11, 'away', awayPlayers, awayXi);
+      buildSection(zones.awayBn, 7,  'away', awayPlayers, awayBn);
+
+      // Couleurs + étoile MOTM (front only)
+      attachRatingListeners();
+      recolorAllRatings();
+      updateMOTM();
+
+      dlog('prérempli:', {
+        homeXi: homeXi.length, homeBn: homeBn.length,
+        awayXi: awayXi.length, awayBn: awayBn.length
+      });
+    }
+
+    /* ====== LOGIQUE COULEURS & ÉTOILE (front only) ====== */
+    function toNum(v){
+      if(v===null || v===undefined) return NaN;
+      const x = String(v).replace(",", ".").trim();
+      if(x==="") return NaN;
+      const n = Number(x);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function applyRatingColor(inp){
+      if(!inp) return;
+      const v = toNum(inp.value);
+      inp.classList.remove('rating-low','rating-mid','rating-high');
+      if (!Number.isFinite(v)) return;            // vide → pas de couleur
+      if (v < 5) inp.classList.add('rating-low');
+      else if (v < 7.5) inp.classList.add('rating-mid');
+      else inp.classList.add('rating-high');
+    }
+
+    function recolorAllRatings(){
+      els('.inp-rating').forEach(applyRatingColor);
+    }
+
+    function updateMOTM(){
+      const rows = Array.from(document.querySelectorAll('.player-row'));
+      let max = -Infinity;
+      const items = rows.map(r => {
+        const rating = toNum(r.querySelector('.inp-rating')?.value);
+        if (Number.isFinite(rating) && rating > max) max = rating;
+        return {row: r, rating};
+      });
+
+      if (!Number.isFinite(max) || max === -Infinity) {
+        items.forEach(it => it.row.querySelector('.motm-star')?.setAttribute('hidden',''));
+        return;
+      }
+      items.forEach(({row, rating}) => {
+        const star = row.querySelector('.motm-star');
+        if (!star) return;
+        if (Number.isFinite(rating) && rating === max) {
+          star.removeAttribute('hidden');
+        } else {
+          star.setAttribute('hidden','');
+        }
+      });
+    }
+
+    function attachRatingListeners(){
+      els('.inp-rating').forEach(inp=>{
+        inp.addEventListener('input', ()=>{ applyRatingColor(inp); updateMOTM(); });
+        inp.addEventListener('change', ()=>{ applyRatingColor(inp); updateMOTM(); });
+      });
+    }
+
+    // Pack des lignes avant submit (format texte attendu par POST)
+    function packSide(container){
+      const rows = Array.from(container.querySelectorAll('.player-row'));
+      const lines = [];
+      rows.forEach(r=>{
+        const pid = r.querySelector('.sel-player').value;
+        if(!pid) return; // ignore lignes vides
+        const pos = (r.querySelector('.inp-pos').value || "").trim();
+        const cap = r.querySelector('.chk-cap').checked ? " (C)" : "";
+        const parts = [`id:${pid}`];
+        if (pos) parts.push(pos);
+        lines.push(parts.join(' ') + cap);
+      });
+      return lines.join("\n");
+    }
+
+    // ======= SAUVEGARDE DES NOTES (set_rating par ligne) =======
+    async function saveAllRatings() {
+      const sel = getMatchSelect();
+      const matchId = parseMatchId(sel?.value);
+      if (!matchId) { alert("Choisis d’abord un match."); return; }
+
+      const rows = els('.player-row');
+      const payloads = [];
+      rows.forEach(r => {
+        const id = r.dataset.lineupId ? Number(r.dataset.lineupId) : null;
+        if (!id) return; // nouvelles lignes => pas encore en base (il faut d’abord “Enregistrer”)
+        let v = (r.querySelector('.inp-rating').value || "").trim();
+        payloads.push({ id, rating: v === "" ? "" : v.replace(",", ".") });
+      });
+
+      if (!payloads.length) {
+        alert("Aucune ligne existante à mettre à jour. Enregistre d’abord les compos (bouton bleu), puis reviens mettre les notes.");
+        return;
+      }
+
+      const url = "{% url 'admin_quick_lineups_api' %}";
+      const csrf = getCsrf();
+
+      let ok = 0, ko = 0;
+      await Promise.all(payloads.map(async (it) => {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "X-CSRFToken": csrf,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({ action: "set_rating", id: it.id, rating: it.rating }),
+          });
+          if (!res.ok) { ko++; return; }
+          const j = await res.json().catch(()=> ({}));
+          if (j && j.ok) ok++; else ko++;
+        } catch(e) { ko++; }
+      }));
+
+      if (ko === 0) {
+        alert(`Notes enregistrées (${ok})`);
+      } else if (ok > 0) {
+        alert(`Notes enregistrées: ${ok}. Échecs: ${ko}. Regarde la console pour les détails.`);
+      } else {
+        alert("Échec lors de la sauvegarde des notes.");
+      }
+
+      // Recharger la liste (pour refléter les valeurs normalisées en base)
+      try { await onMatchChange(); } catch(e) {}
+      try { recolorAllRatings(); updateMOTM(); } catch(e){}
+    }
+
+    // listeners
+    el('#match-select').addEventListener('change', onMatchChange);
+    el('#lineup-form').addEventListener('submit', ()=>{
+      el('#tx-home-xi').value    = packSide(zones.homeXi);
+      el('#tx-home-bench').value = packSide(zones.homeBn);
+      el('#tx-away-xi').value    = packSide(zones.awayXi);
+      el('#tx-away-bench').value = packSide(zones.awayBn);
+    });
+    el('#btn-save-ratings-top').addEventListener('click', saveAllRatings);
+    el('#btn-save-ratings-bottom').addEventListener('click', saveAllRatings);
+
+    // init auto si un match est déjà sélectionné
+    if (getMatchSelect()?.value) onMatchChange();
+  })();
+  </script>
+{% endblock %}

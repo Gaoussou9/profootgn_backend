@@ -1,0 +1,28 @@
+[
+  {
+    "model": "clubs.club",
+    "pk": 1,
+    "fields": {
+      "name": "Hafia FC",
+      "short_name": "HAF",
+      "city": "Conakry",
+      "founded": "1951-01-01",
+      "stadium": "Stade du 28 Septembre",
+      "president": "Kerfalla Camara",
+      "coach": "Mandjou Diallo"
+    }
+  },
+  {
+    "model": "clubs.club",
+    "pk": 2,
+    "fields": {
+      "name": "AS Kaloum",
+      "short_name": "ASK",
+      "city": "Conakry",
+      "founded": "1958-01-01",
+      "stadium": "Stade Kabinet Kouyaté",
+      "president": "Boubacar",
+      "coach": "Seydou"
+    }
+  }
+]
