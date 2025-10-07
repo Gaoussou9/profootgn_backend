@@ -1,9 +1,10 @@
 # profootgn/urls.py
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
+from django.views.static import serve  # pour exposer /media/ en prod
 
 # ===== Admin rapides (matches / events / lineups) =====
 from matches.admin_views import (
@@ -39,12 +40,12 @@ def root_ping(request):
             "refresh": "/api/auth/token/refresh/",
         },
         "endpoints": [
-            "/api/",                    # routeur principal
-            "/api/matches/",            # liste / détail (inclut lineups + moyennes)
-            "/api/matches/<id>/",       # detail avec lineups + avg_rating_home/away
+            "/api/",
+            "/api/matches/",
+            "/api/matches/<id>/",
             "/api/matches/<id>/lineups/",
             "/api/matches/<id>/team-info/",
-            "/api/lineups/",            # create/update/delete lineups (admin)
+            "/api/lineups/",
             "/api/goals/", "/api/cards/", "/api/rounds/",
             "/api/stats/",
             "/api/players/search/",
@@ -107,6 +108,17 @@ urlpatterns = [
     path("api/", include("users.urls")),
 ]
 
-# Fichiers média en dev
+# Fichiers média
 if settings.DEBUG:
+    # Dev: via static()
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # Prod/Staging (Render): exposer /media/ via Django
+    urlpatterns += [
+        re_path(
+            r"^media/(?P<path>.*)$",
+            serve,
+            {"document_root": settings.MEDIA_ROOT},
+            name="media",
+        ),
+    ]
