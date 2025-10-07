@@ -63,6 +63,9 @@ def root_ping(request):
 urlpatterns = [
     path("", root_ping, name="root"),
 
+    # ✅ Health check simple pour Render et monitoring
+    path("api/health/", lambda r: JsonResponse({"status": "ok"})),
+
     # ===== Admin custom (pages rapides) =====
     path("admin/matches/quick/",  admin.site.admin_view(quick_add_match_view),  name="admin_quick_match"),
     path("admin/players/quick/",  admin.site.admin_view(quick_add_players_view), name="admin_quick_players"),
