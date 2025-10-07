@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 import os
 from datetime import timedelta
 
-# --- Ajouts pour staging Render/Postgres & statiques ---
-import dj_database_url  # <- NEW (Render/Postgres)
-# ---------------------
+# --- Staging Render/Postgres & statiques ---
+import dj_database_url  # Render/Postgres
+# ------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -19,7 +19,11 @@ DEBUG = os.getenv("DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
 
 # Si ALLOWED_HOSTS n'est pas défini, on met une valeur par défaut compatible staging
 _default_hosts = ".onrender.com,.vercel.app,localhost,127.0.0.1"
-ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", _default_hosts if not DEBUG else "*").split(",") if h.strip()] or (["*"] if DEBUG else [".onrender.com", ".vercel.app"])
+ALLOWED_HOSTS = (
+    [h.strip() for h in os.getenv("ALLOWED_HOSTS", _default_hosts if not DEBUG else "*")
+     .split(",") if h.strip()]
+    or (["*"] if DEBUG else [".onrender.com", ".vercel.app"])
+)
 
 # =========================
 # Apps
@@ -31,15 +35,16 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+
+    # WhiteNoise: doit précéder 'django.contrib.staticfiles'
+    "whitenoise.runserver_nostatic",
+
     "django.contrib.staticfiles",
 
     # 3rd party
     "rest_framework",
     "corsheaders",
     "django_filters",
-
-    # NEW: pour servir les statiques efficacement (Render)
-    "whitenoise.runserver_nostatic",
 
     # local apps
     "clubs",
@@ -51,6 +56,10 @@ INSTALLED_APPS = [
     "users",
 ]
 
+# Activer Cloudinary si CLOUDINARY_URL est présent
+if os.getenv("CLOUDINARY_URL"):
+    INSTALLED_APPS += ["cloudinary", "cloudinary_storage"]
+
 # =========================
 # Middleware
 # =========================
@@ -58,7 +67,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # doit rester en tête
     "django.middleware.security.SecurityMiddleware",
 
-    # NEW: compression/caching des statiques en prod/staging
+    # WhiteNoise (statiques)
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -77,7 +86,7 @@ ROOT_URLCONF = "profootgn.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],  # overrides admin/partials
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -95,8 +104,6 @@ WSGI_APPLICATION = "profootgn.wsgi.application"
 # =========================
 # Database (MySQL local / Postgres Render)
 # =========================
-import dj_database_url
-
 if os.getenv("DATABASE_URL"):
     # Prod/Render: utilise la chaîne postgres://
     DATABASES = {
@@ -115,7 +122,6 @@ else:
             "OPTIONS": {"charset": "utf8mb4"},
         }
     }
-
 
 # =========================
 # Auth
@@ -142,12 +148,28 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# NEW: stockage statiques via Whitenoise (manifeste compressé)
+# ✅ Assure l'existence de MEDIA_ROOT (upload Render)
+os.makedirs(MEDIA_ROOT, exist_ok=True)
+
+# WhiteNoise (statiques) avec manifest compressé
 STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    }
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"}
 }
+
+# ---- Médias : Cloudinary si dispo, sinon disque local ----
+if os.getenv("CLOUDINARY_URL"):
+    # Besoin de 'cloudinary' + 'django-cloudinary-storage' dans requirements.txt
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    # Optionnel: préfixe d'organisation
+    CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
+# ----------------------------------------------------------
+
+# Limites d'upload (évite certains 500 avec gros fichiers)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+
+# Permissions par défaut des fichiers uploadés
+FILE_UPLOAD_PERMISSIONS = 0o644
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -162,7 +184,6 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    # lecture publique par défaut ; routes d'écriture protégées dans les viewsets
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
     ),
@@ -197,8 +218,7 @@ if not DEBUG and not CORS_ALLOWED_ORIGINS:
 else:
     CORS_ALLOWED_ORIGIN_REGEXES = []
 
-# CSRF doit inclure le schéma (ne supporte pas les regex)
-# On dérive depuis CORS_ALLOWED_ORIGINS + ajoute Render/Vercel par défaut en staging/prod
+# CSRF: doit inclure le schéma
 CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith(("http://", "https://"))]
 if not DEBUG:
     CSRF_TRUSTED_ORIGINS += [
@@ -212,12 +232,10 @@ if not DEBUG:
 # =========================
 # Sécurité (staging/prod)
 # =========================
-# Indique à Django que le proxy (Render) passe du HTTPS
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-# En prod, tu pourras activer HSTS (ex: 31536000)
-SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_SECONDS = 0  # active-le en prod (ex: 31536000)
 
 # =========================
 # Jazzmin
