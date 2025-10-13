@@ -5,6 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.views.static import serve  # pour exposer /media/ en prod
+import os
 
 # ===== Admin rapides (matches / events / lineups) =====
 from matches.admin_views import (
@@ -61,11 +62,24 @@ def root_ping(request):
     })
 
 
+# ---- Debug temporaire pour Cloudinary / storage ----
+def debug_storage(request):
+    return JsonResponse({
+        "DEFAULT_FILE_STORAGE": getattr(settings, "DEFAULT_FILE_STORAGE", None),
+        "CLOUDINARY_URL_set": bool(os.getenv("CLOUDINARY_URL")),
+        "MEDIA_URL": settings.MEDIA_URL,
+    })
+# ----------------------------------------------------
+
+
 urlpatterns = [
     path("", root_ping, name="root"),
 
     # ✅ Health check simple pour Render et monitoring
     path("api/health/", lambda r: JsonResponse({"status": "ok"})),
+
+    # 🔎 Debug storage (à supprimer après test)
+    path("api/debug/storage/", debug_storage),
 
     # ===== Admin custom (pages rapides) =====
     path("admin/matches/quick/",  admin.site.admin_view(quick_add_match_view),  name="admin_quick_match"),
@@ -113,7 +127,7 @@ if settings.DEBUG:
     # Dev: via static()
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
-    # Prod/Staging (Render): exposer /media/ via Django
+    # Prod/Staging (Render): exposer /media/ via Django (utile si tu n'utilises pas Cloudinary)
     urlpatterns += [
         re_path(
             r"^media/(?P<path>.*)$",
