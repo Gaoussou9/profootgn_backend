@@ -5,6 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.views.static import serve  # pour exposer /media/ en prod
+from django.db import connection       # <- debug DB
 import os
 
 # ===== Admin rapides (matches / events / lineups) =====
@@ -72,14 +73,34 @@ def debug_storage(request):
 # ----------------------------------------------------
 
 
+# ---- Debug DB: vérifier longueur de la colonne clubs_club.logo ----
+def debug_db_logo_col(request):
+    with connection.cursor() as cur:
+        cur.execute("""
+            SELECT column_name, data_type, character_maximum_length
+            FROM information_schema.columns
+            WHERE table_name = 'clubs_club' AND column_name = 'logo'
+        """)
+        row = cur.fetchone()
+    return JsonResponse({
+        "table": "clubs_club",
+        "column": "logo",
+        "data_type": row[1] if row else None,
+        "max_length": row[2] if row else None,
+        "note": "Si max_length == 100, la migration n'est PAS appliquée sur Render.",
+    })
+# ------------------------------------------------------------------
+
+
 urlpatterns = [
     path("", root_ping, name="root"),
 
     # ✅ Health check simple pour Render et monitoring
     path("api/health/", lambda r: JsonResponse({"status": "ok"})),
 
-    # 🔎 Debug storage (à supprimer après test)
+    # 🔎 Debug (à supprimer après test)
     path("api/debug/storage/", debug_storage),
+    path("api/debug/db/logo-col/", debug_db_logo_col),
 
     # ===== Admin custom (pages rapides) =====
     path("admin/matches/quick/",  admin.site.admin_view(quick_add_match_view),  name="admin_quick_match"),
