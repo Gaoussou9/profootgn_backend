@@ -89,7 +89,7 @@
     <div class="card mb-3">
       <div class="card-body">
         <h3 class="card-title mb-3">Ajouter un joueur</h3>
-        <form method="post" action="" enctype="multipart/form-data" class="vstack gap-3">
+        <form method="post" action="" enctype="multipart/form-data" class="vstack gap-3" autocomplete="off" novalidate>
           {% csrf_token %}
           <input type="hidden" name="action" value="add_player">
           <div class="row g-3">
@@ -111,7 +111,7 @@
             </div>
             <div class="col-md-8">
               <label class="form-label">Photo (optionnel)</label>
-              <input name="photo" type="file" class="form-control">
+              <input name="photo" type="file" class="form-control" accept="image/*">
             </div>
           </div>
           <div>
@@ -152,7 +152,7 @@
                 <tr id="edit-form-{{ p.id }}" class="edit-form-row" style="display:none">
                   <td colspan="6">
                     <div class="action-inline">
-                      <form method="post" action="" enctype="multipart/form-data" class="d-inline">
+                      <form method="post" action="" enctype="multipart/form-data" class="d-inline" autocomplete="off" novalidate>
                         {% csrf_token %}
                         <input type="hidden" name="action" value="edit_player">
                         <input type="hidden" name="player_id" value="{{ p.id }}">
@@ -176,7 +176,7 @@
                           </div>
                           <div class="col-md-2">
                             <label class="form-label">Photo</label>
-                            <input type="file" name="photo" class="form-control">
+                            <input type="file" name="photo" class="form-control" accept="image/*">
                           </div>
                           <div class="col-12 mt-2">
                             <button type="submit" class="btn btn-success btn-sm">💾 Sauvegarder</button>
@@ -224,7 +224,7 @@
       <div class="card mb-3">
         <div class="card-body">
           <h3 class="card-title mb-3">Ajouter un membre du staff</h3>
-          <form method="post" action="" enctype="multipart/form-data" class="vstack gap-3">
+          <form method="post" action="" enctype="multipart/form-data" class="vstack gap-3" autocomplete="off" novalidate>
             {% csrf_token %}
             <input type="hidden" name="action" value="add_staff">
             <div class="row g-3">
@@ -250,7 +250,7 @@
               </div>
               <div class="col-md-6">
                 <label class="form-label">Photo (optionnel)</label>
-                <input name="photo" type="file" class="form-control">
+                <input name="photo" type="file" class="form-control" accept="image/*">
               </div>
             </div>
             <div>
@@ -290,7 +290,7 @@
                   <tr id="edit-staff-form-{{ s.id }}" class="edit-form-row" style="display:none">
                     <td colspan="6">
                       <div class="action-inline">
-                        <form method="post" action="" enctype="multipart/form-data" class="d-inline">
+                        <form method="post" action="" enctype="multipart/form-data" class="d-inline" autocomplete="off" novalidate>
                           {% csrf_token %}
                           <input type="hidden" name="action" value="edit_staff">
                           <input type="hidden" name="staff_id" value="{{ s.id }}">
@@ -318,7 +318,7 @@
                             </div>
                             <div class="col-md-2">
                               <label class="form-label">Photo</label>
-                              <input type="file" name="photo" class="form-control">
+                              <input type="file" name="photo" class="form-control" accept="image/*">
                             </div>
                             <div class="col-12 mt-2">
                               <button type="submit" class="btn btn-success btn-sm">💾 Sauvegarder</button>

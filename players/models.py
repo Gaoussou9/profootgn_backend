@@ -17,7 +17,7 @@ class Player(models.Model):
     position = models.CharField(max_length=64, blank=True, null=True) 
     nationality = models.CharField(max_length=60, blank=True)
     birthdate = models.DateField(null=True, blank=True)
-    photo = models.ImageField(upload_to='players/', blank=True, null=True)
+    photo = models.ImageField(upload_to='players/', blank=True, null=True, max_length=500,)
 
     class Meta:
         ordering = ['last_name','first_name']
