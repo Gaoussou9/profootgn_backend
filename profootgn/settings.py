@@ -14,12 +14,16 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 DEBUG = os.getenv("DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
 
-_default_hosts = ".onrender.com,.vercel.app,localhost,127.0.0.1"
-ALLOWED_HOSTS = (
-    [h.strip() for h in os.getenv("ALLOWED_HOSTS", _default_hosts if not DEBUG else "*")
-     .split(",") if h.strip()]
-    or (["*"] if DEBUG else [".onrender.com", ".vercel.app"])
-)
+# ALLOWED_HOSTS
+if DEBUG:
+    ALLOWED_HOSTS = ["*"]
+else:
+    _default_hosts = ".onrender.com,.vercel.app"
+    ALLOWED_HOSTS = [
+        h.strip()
+        for h in os.getenv("ALLOWED_HOSTS", _default_hosts).split(",")
+        if h.strip()
+    ] or [".onrender.com", ".vercel.app"]
 
 # =========================
 # Apps
@@ -60,7 +64,7 @@ if USE_CLOUDINARY:
 # Middleware
 # =========================
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # ← le plus haut possible, avant CommonMiddleware
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -99,7 +103,11 @@ WSGI_APPLICATION = "profootgn.wsgi.application"
 # =========================
 if os.getenv("DATABASE_URL"):
     DATABASES = {
-        "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=600)
+        "default": dj_database_url.parse(
+            os.environ["DATABASE_URL"],
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
 else:
     DATABASES = {
@@ -140,15 +148,11 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
-# STORAGES (Django 4.2+/5) — 'default' est OBLIGATOIRE
+# STORAGES (Django 4.2+/5)
 if USE_CLOUDINARY:
     STORAGES = {
-        "default": {
-            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
+        "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
     CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
 else:
@@ -157,9 +161,7 @@ else:
             "BACKEND": "django.core.files.storage.FileSystemStorage",
             "OPTIONS": {"location": str(MEDIA_ROOT)},
         },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
 # Limites/permissions d’upload
@@ -195,24 +197,51 @@ SIMPLE_JWT = {
 # =========================
 # CORS / CSRF
 # =========================
-CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
-_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
-CORS_ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()]
-if not DEBUG and not CORS_ALLOWED_ORIGINS:
-    CORS_ALLOWED_ORIGIN_REGEXES = [r"^https:\/\/.*\.vercel\.app$"]
-else:
+# Origine principale du frontend (prod) — ex: https://profootgn.vercel.app
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+
+# Liste CSV d’origines supplémentaires explicites (préviews Vercel ou autres)
+# ex: BACKEND_ALLOWED_ORIGINS="https://feature-x-yourapp.vercel.app,https://autre.site"
+EXTRA_ORIGINS = [
+    o.strip() for o in os.getenv("BACKEND_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
     CORS_ALLOWED_ORIGIN_REGEXES = []
-CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith(("http://", "https://"))]
-if not DEBUG:
-    CSRF_TRUSTED_ORIGINS += ["https://*.vercel.app", "https://*.onrender.com"]
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    # Autorisations explicites
+    CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN, *EXTRA_ORIGINS]
+    # + wildcard regex pour couvrir toutes les previews *.vercel.app (CORS uniquement)
+    CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\.vercel\.app$"]
+
+# Si tu utilises des cookies/session côté client
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF doit lister des origines EXPLICITES (pas de wildcard ici)
+CSRF_TRUSTED_ORIGINS = [
+    o for o in ([FRONTEND_ORIGIN] + EXTRA_ORIGINS) if o.startswith(("http://", "https://"))
+]
 
 # =========================
 # Sécurité
 # =========================
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+SECURE_SSL_REDIRECT = not DEBUG
+
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SECURE_HSTS_SECONDS = 0  # à durcir en prod
+
+# À durcir en prod (ex: 31536000) une fois le domaine final stabilisé
+SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
 
 # =========================
 # Jazzmin
