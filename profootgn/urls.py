@@ -5,7 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.views.static import serve  # pour exposer /media/ en prod
-from django.db import connection       # <- debug DB
+from django.db import connection       # debug DB
 import os
 
 # ===== Admin rapides (matches / events / lineups) =====
@@ -63,14 +63,13 @@ def root_ping(request):
     })
 
 
-# ---- Debug temporaire pour Cloudinary / storage ----
+# ---- Debug: stockage (Cloudinary activé ? MEDIA_URL ?) ----
 def debug_storage(request):
     return JsonResponse({
         "DEFAULT_FILE_STORAGE": getattr(settings, "DEFAULT_FILE_STORAGE", None),
         "CLOUDINARY_URL_set": bool(os.getenv("CLOUDINARY_URL")),
         "MEDIA_URL": settings.MEDIA_URL,
     })
-# ----------------------------------------------------
 
 
 # ---- Debug DB: vérifier longueur de la colonne clubs_club.logo ----
@@ -89,7 +88,30 @@ def debug_db_logo_col(request):
         "max_length": row[2] if row else None,
         "note": "Si max_length == 100, la migration n'est PAS appliquée sur Render.",
     })
-# ------------------------------------------------------------------
+
+
+# ---- Debug Cloudinary : upload in-memory pour voir l'erreur exacte ----
+from django.core.files.base import ContentFile
+from django.utils.crypto import get_random_string
+def debug_cloudinary_upload(request):
+    try:
+        # petit PNG 1x1 transparent
+        png_1x1 = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc```\x00"
+            b"\x00\x00\x04\x00\x01\x0b\xe7\x02\xb5\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        from django.core.files.storage import default_storage
+        name = f"debug/{get_random_string(8)}.png"
+        saved_name = default_storage.save(name, ContentFile(png_1x1))
+        url = default_storage.url(saved_name)
+        return JsonResponse({"ok": True, "saved_name": saved_name, "url": url})
+    except Exception as e:
+        import traceback
+        return JsonResponse(
+            {"ok": False, "error": str(e), "trace": traceback.format_exc()},
+            status=500,
+        )
 
 
 urlpatterns = [
@@ -101,6 +123,7 @@ urlpatterns = [
     # 🔎 Debug (à supprimer après test)
     path("api/debug/storage/", debug_storage),
     path("api/debug/db/logo-col/", debug_db_logo_col),
+    path("api/debug/cloudinary-upload/", debug_cloudinary_upload),
 
     # ===== Admin custom (pages rapides) =====
     path("admin/matches/quick/",  admin.site.admin_view(quick_add_match_view),  name="admin_quick_match"),
