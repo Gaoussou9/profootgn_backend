@@ -31,23 +31,16 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-
-    # WhiteNoise doit précéder 'django.contrib.staticfiles'
-    "whitenoise.runserver_nostatic",
+    "whitenoise.runserver_nostatic",  # avant staticfiles
     "django.contrib.staticfiles",
-
-    # 3rd party
     "rest_framework",
     "corsheaders",
     "django_filters",
-    # Cloudinary (activé si CLOUDINARY_URL est défini)
     *(
         ["cloudinary", "cloudinary_storage"]
         if os.getenv("CLOUDINARY_URL")
         else []
     ),
-
-    # local apps
     "clubs",
     "players",
     "matches",
@@ -96,7 +89,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "profootgn.wsgi.application"
 
 # =========================
-# Database (MySQL local / Postgres Render)
+# Database
 # =========================
 if os.getenv("DATABASE_URL"):
     DATABASES = {
@@ -141,32 +134,39 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
-# ---- Stockage (Django 5+ exige STORAGES['default']) ----
-STORAGES = {
-    # WhiteNoise pour les statiques
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-    },
-    # Médias: Cloudinary si CLOUDINARY_URL, sinon FileSystem
-    "default": {
-        "BACKEND": (
-            "cloudinary_storage.storage.MediaCloudinaryStorage"
-            if os.getenv("CLOUDINARY_URL")
-            else "django.core.files.storage.FileSystemStorage"
-        ),
-        "OPTIONS": {
-            # utile pour FileSystemStorage; ignoré par Cloudinary
-            "location": str(MEDIA_ROOT)
-        },
-    },
-}
+# ---- Stockage (Django 5+) ----
+USING_CLOUDINARY = bool(os.getenv("CLOUDINARY_URL"))
 
-# Préfixe d’organisation Cloudinary (optionnel)
+if USING_CLOUDINARY:
+    # Cloudinary pour les MÉDIAS
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        },
+        "default": {
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"
+            # ⚠️ pas d'OPTIONS ici (pas de 'location')
+        },
+    }
+else:
+    # Disque local pour les MÉDIAS
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        },
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(MEDIA_ROOT),
+                # optionnel: "base_url": MEDIA_URL,
+            },
+        },
+    }
+
 CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
 
-# Limites d'upload
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 FILE_UPLOAD_PERMISSIONS = 0o644
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -182,9 +182,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.AllowAny",
-    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
@@ -200,32 +198,23 @@ SIMPLE_JWT = {
 # CORS / CSRF
 # =========================
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
-
-_origins_env = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173"
-)
+_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()]
-
 if not DEBUG and not CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGIN_REGEXES = [r"^https:\/\/.*\.vercel\.app$"]
 else:
     CORS_ALLOWED_ORIGIN_REGEXES = []
-
 CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith(("http://", "https://"))]
 if not DEBUG:
-    CSRF_TRUSTED_ORIGINS += [
-        "https://*.vercel.app",
-        "https://*.onrender.com",
-    ]
+    CSRF_TRUSTED_ORIGINS += ["https://*.vercel.app", "https://*.onrender.com"]
 
 # =========================
-# Sécurité (staging/prod)
+# Sécurité
 # =========================
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SECURE_HSTS_SECONDS = 0  # active-le en prod (ex: 31536000)
+SECURE_HSTS_SECONDS = 0
 
 # =========================
 # Jazzmin
@@ -236,7 +225,6 @@ JAZZMIN_SETTINGS = {
     "site_brand": "Administration de Django",
     "welcome_sign": "Tableau de bord",
     "copyright": "LiveFootGn",
-
     "topmenu_links": [
         {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
         {"app": "players"},
@@ -246,11 +234,9 @@ JAZZMIN_SETTINGS = {
         {"app": "users"},
         {"name": "Espace Admin LiveFootGn", "url": "admin_livefootgn"},
     ],
-
     "order_with_respect_to": [
         "auth", "players", "clubs", "matches", "stats", "news", "recruitment", "users"
     ],
-
     "icons": {
         "auth": "fas fa-shield-alt",
         "auth.Group": "fas fa-users-cog",
@@ -271,8 +257,7 @@ JAZZMIN_SETTINGS = {
         "recruitment.TrialRequest": "fas fa-clipboard-check",
         "users": "fas fa-id-badge",
         "users.Profile": "fas fa-id-card",
-    },
-
+    ],
     "show_ui_builder": False,
     "changeform_format": "horizontal_tabs",
     "related_modal_active": True,
@@ -293,7 +278,7 @@ JAZZMIN_UI_TWEAKS = {
 }
 
 # =========================
-# Logging (utile pour debug)
+# Logging
 # =========================
 LOGGING = {
     "version": 1,
