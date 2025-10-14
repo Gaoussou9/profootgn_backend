@@ -255,7 +255,7 @@ JAZZMIN_SETTINGS = {
         "recruitment.TrialRequest": "fas fa-clipboard-check",
         "users": "fas fa-id-badge",
         "users.Profile": "fas fa-id-card",
-    ],
+    },
     "show_ui_builder": False,
     "changeform_format": "horizontal_tabs",
     "related_modal_active": True,
