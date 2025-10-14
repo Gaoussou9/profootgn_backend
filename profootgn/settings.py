@@ -31,16 +31,17 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-    "whitenoise.runserver_nostatic",  # avant staticfiles
+
+    # WhiteNoise doit être AVANT 'django.contrib.staticfiles'
+    "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
+
+    # 3rd party
     "rest_framework",
     "corsheaders",
     "django_filters",
-    *(
-        ["cloudinary", "cloudinary_storage"]
-        if os.getenv("CLOUDINARY_URL")
-        else []
-    ),
+
+    # locaux
     "clubs",
     "players",
     "matches",
@@ -49,6 +50,11 @@ INSTALLED_APPS = [
     "recruitment",
     "users",
 ]
+
+# Cloudinary apps si disponible
+USE_CLOUDINARY = bool(os.getenv("CLOUDINARY_URL"))
+if USE_CLOUDINARY:
+    INSTALLED_APPS += ["cloudinary", "cloudinary_storage"]
 
 # =========================
 # Middleware
@@ -109,7 +115,7 @@ else:
     }
 
 # =========================
-# Auth
+# Auth / Locale
 # =========================
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -123,7 +129,6 @@ TIME_ZONE = "Africa/Conakry"
 USE_I18N = True
 USE_TZ = True
 
-
 # =========================
 # Static / Media
 # =========================
@@ -135,10 +140,8 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
-USE_CLOUDINARY = bool(os.getenv("CLOUDINARY_URL"))
-
+# STORAGES (Django 4.2+/5) — 'default' est OBLIGATOIRE
 if USE_CLOUDINARY:
-    # Cloudinary pour les MEDIAS (fichiers uploadés)
     STORAGES = {
         "default": {
             "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
@@ -147,10 +150,8 @@ if USE_CLOUDINARY:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
-    # (facultatif) préfixe d’organisation
     CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
 else:
-    # Disque local pour les médias en local/dev
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -162,15 +163,8 @@ else:
     }
 
 # Limites/permissions d’upload
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
-FILE_UPLOAD_PERMISSIONS = 0o644
-
-
-CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
-
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -218,7 +212,7 @@ if not DEBUG:
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_SECONDS = 0  # à durcir en prod
 
 # =========================
 # Jazzmin
