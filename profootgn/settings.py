@@ -3,10 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 from datetime import timedelta
-
-# --- Staging Render/Postgres & statiques ---
 import dj_database_url  # Render/Postgres
-# ------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -17,7 +14,6 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 DEBUG = os.getenv("DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
 
-# Si ALLOWED_HOSTS n'est pas défini, on met une valeur par défaut compatible staging
 _default_hosts = ".onrender.com,.vercel.app,localhost,127.0.0.1"
 ALLOWED_HOSTS = (
     [h.strip() for h in os.getenv("ALLOWED_HOSTS", _default_hosts if not DEBUG else "*")
@@ -36,15 +32,20 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
 
-    # WhiteNoise: doit précéder 'django.contrib.staticfiles'
+    # WhiteNoise doit précéder 'django.contrib.staticfiles'
     "whitenoise.runserver_nostatic",
-
     "django.contrib.staticfiles",
 
     # 3rd party
     "rest_framework",
     "corsheaders",
     "django_filters",
+    # Cloudinary (activé si CLOUDINARY_URL est défini)
+    *(
+        ["cloudinary", "cloudinary_storage"]
+        if os.getenv("CLOUDINARY_URL")
+        else []
+    ),
 
     # local apps
     "clubs",
@@ -56,20 +57,13 @@ INSTALLED_APPS = [
     "users",
 ]
 
-# Activer Cloudinary si CLOUDINARY_URL est présent
-if os.getenv("CLOUDINARY_URL"):
-    INSTALLED_APPS += ["cloudinary", "cloudinary_storage"]
-
 # =========================
 # Middleware
 # =========================
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",  # doit rester en tête
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
-
-    # WhiteNoise (statiques)
     "whitenoise.middleware.WhiteNoiseMiddleware",
-
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -105,12 +99,10 @@ WSGI_APPLICATION = "profootgn.wsgi.application"
 # Database (MySQL local / Postgres Render)
 # =========================
 if os.getenv("DATABASE_URL"):
-    # Prod/Render: utilise la chaîne postgres://
     DATABASES = {
         "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=600)
     }
 else:
-    # Dev local: MySQL
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
@@ -147,28 +139,34 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-
-# ✅ Assure l'existence de MEDIA_ROOT (upload Render)
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
-# WhiteNoise (statiques) avec manifest compressé
+# ---- Stockage (Django 5+ exige STORAGES['default']) ----
 STORAGES = {
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"}
+    # WhiteNoise pour les statiques
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+    # Médias: Cloudinary si CLOUDINARY_URL, sinon FileSystem
+    "default": {
+        "BACKEND": (
+            "cloudinary_storage.storage.MediaCloudinaryStorage"
+            if os.getenv("CLOUDINARY_URL")
+            else "django.core.files.storage.FileSystemStorage"
+        ),
+        "OPTIONS": {
+            # utile pour FileSystemStorage; ignoré par Cloudinary
+            "location": str(MEDIA_ROOT)
+        },
+    },
 }
 
-# ---- Médias : Cloudinary si dispo, sinon disque local ----
-if os.getenv("CLOUDINARY_URL"):
-    # Besoin de 'cloudinary' + 'django-cloudinary-storage' dans requirements.txt
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-    # Optionnel: préfixe d'organisation
-    CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
-# ----------------------------------------------------------
+# Préfixe d’organisation Cloudinary (optionnel)
+CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
 
-# Limites d'upload (évite certains 500 avec gros fichiers)
+# Limites d'upload
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
-
-# Permissions par défaut des fichiers uploadés
 FILE_UPLOAD_PERMISSIONS = 0o644
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -201,33 +199,25 @@ SIMPLE_JWT = {
 # =========================
 # CORS / CSRF
 # =========================
-# En dev (DEBUG=True) on ouvre à tous pour simplifier.
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
 
-# Origines explicites (prod/staging)
-# Tu peux définir ALLOWED_ORIGINS dans .env (séparées par des virgules).
 _origins_env = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173"
 )
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()]
 
-# En staging/prod sans ALLOWED_ORIGINS custom, autorise tous les sous-domaines vercel.app
 if not DEBUG and not CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGIN_REGEXES = [r"^https:\/\/.*\.vercel\.app$"]
 else:
     CORS_ALLOWED_ORIGIN_REGEXES = []
 
-# CSRF: doit inclure le schéma
 CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith(("http://", "https://"))]
 if not DEBUG:
     CSRF_TRUSTED_ORIGINS += [
         "https://*.vercel.app",
         "https://*.onrender.com",
     ]
-
-# (décommente si tu utilises des cookies/sessions cross-site)
-# CORS_ALLOW_CREDENTIALS = True
 
 # =========================
 # Sécurité (staging/prod)
@@ -302,9 +292,9 @@ JAZZMIN_UI_TWEAKS = {
     "login_logo": None,
 }
 
-import logging
-
-
+# =========================
+# Logging (utile pour debug)
+# =========================
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
