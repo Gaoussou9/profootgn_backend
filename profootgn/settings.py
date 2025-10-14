@@ -123,6 +123,7 @@ TIME_ZONE = "Africa/Conakry"
 USE_I18N = True
 USE_TZ = True
 
+
 # =========================
 # Static / Media
 # =========================
@@ -134,34 +135,37 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
-# ---- Stockage (Django 5+) ----
-USING_CLOUDINARY = bool(os.getenv("CLOUDINARY_URL"))
+USE_CLOUDINARY = bool(os.getenv("CLOUDINARY_URL"))
 
-if USING_CLOUDINARY:
-    # Cloudinary pour les MÉDIAS
+if USE_CLOUDINARY:
+    # Cloudinary pour les MEDIAS (fichiers uploadés)
     STORAGES = {
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        },
         "default": {
-            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"
-            # ⚠️ pas d'OPTIONS ici (pas de 'location')
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+    # (facultatif) préfixe d’organisation
+    CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
 else:
-    # Disque local pour les MÉDIAS
+    # Disque local pour les médias en local/dev
     STORAGES = {
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        },
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
-            "OPTIONS": {
-                "location": str(MEDIA_ROOT),
-                # optionnel: "base_url": MEDIA_URL,
-            },
+            "OPTIONS": {"location": str(MEDIA_ROOT)},
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+
+# Limites/permissions d’upload
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+FILE_UPLOAD_PERMISSIONS = 0o644
+
 
 CLOUDINARY_MEDIA_PREFIX = os.getenv("CLOUDINARY_MEDIA_PREFIX", "profootgn")
 
