@@ -1,11 +1,9 @@
-# matches/models.py
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 from clubs.models import Club
 from players.models import Player
-
 
 # -----------------------------------
 # Statuts (cohérents admin/front)
@@ -54,21 +52,39 @@ class Match(models.Model):
         Round, on_delete=models.SET_NULL, null=True, related_name="matches"
     )
     datetime = models.DateTimeField()
+
     home_club = models.ForeignKey(
         Club, on_delete=models.CASCADE, related_name="home_matches"
     )
     away_club = models.ForeignKey(
         Club, on_delete=models.CASCADE, related_name="away_matches"
     )
+
     home_score = models.PositiveIntegerField(default=0)
     away_score = models.PositiveIntegerField(default=0)
+
     status = models.CharField(max_length=12, choices=MATCH_STATUS, default="SCHEDULED")
-    minute = models.PositiveIntegerField(default=0)  # minute live estimée
+
+    # minute "manuelle" historique (garde-le pour compat si tu remplis ça aujourd'hui)
+    minute = models.PositiveIntegerField(default=0)
+
     venue = models.CharField(max_length=120, blank=True)
 
     # Champ libre admin (optionnel)
     buteur = models.CharField(
         max_length=120, blank=True, default="", help_text="Nom du buteur principal"
+    )
+
+    # ⬇⬇ NOUVEAU : horodatages réels des coups d'envoi, utilisés pour calculer la minute côté serveur
+    kickoff_1 = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Heure réelle du début de la 1ère mi-temps (UTC).",
+    )
+    kickoff_2 = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Heure réelle du début de la 2ème mi-temps (UTC).",
     )
 
     class Meta:
@@ -241,6 +257,10 @@ class Lineup(models.Model):
                 raise ValidationError("Le rating doit être entre 1.0 et 10.0.")
 
     def __str__(self):
-        name = self.player_name or getattr(self.player, "name", "") or f"#{self.number or '?'}"
+        name = (
+            self.player_name
+            or getattr(self.player, "name", "")
+            or f"#{self.number or '?'}"
+        )
         tag = "XI" if self.is_starting else "SUB"
         return f"{self.match_id}:{self.club_id} {tag} {name}"

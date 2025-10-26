@@ -1,5 +1,6 @@
 # matches/serializers.py
 from rest_framework import serializers
+from django.utils import timezone  # ⬅️ ajouté
 
 from .models import (
     Match, Goal, Card, Round,
@@ -451,6 +452,9 @@ class MatchSerializer(serializers.ModelSerializer):
     home_coach_name  = serializers.SerializerMethodField()
     away_coach_name  = serializers.SerializerMethodField()
 
+    # 👇 NOUVEAU: minute officielle calculée côté serveur
+    current_minute   = serializers.SerializerMethodField()
+
     class Meta:
         model = Match
         fields = [
@@ -462,6 +466,8 @@ class MatchSerializer(serializers.ModelSerializer):
             "home_score", "away_score",
             "status", "minute", "venue",
             "buteur",
+            # minute calculée côté serveur
+            "current_minute",
             # team info exposées au front:
             "home_formation", "away_formation",
             "home_coach_name", "away_coach_name",
@@ -541,3 +547,48 @@ class MatchSerializer(serializers.ModelSerializer):
         mapping = self._team_info_map(obj)
         ti = mapping.get(getattr(obj, "away_club_id", None))
         return getattr(ti, "coach_name", "") if ti else ""
+
+    # ---- minute officielle serveur ----
+    def get_current_minute(self, obj):
+        """
+        But: donner une minute cohérente pour TOUS les clients sans qu'ils la fassent évoluer tous seuls.
+        Règle:
+          - "LIVE" => calcule minute actuelle à partir de kickoff_1 / kickoff_2
+          - "HT" ou "PAUSED" => renvoie 45
+          - "FT"/"FINISHED" => renvoie 90
+          - sinon => None
+        Conditions:
+          - Le modèle Match doit avoir kickoff_1 (DateTimeField) = début 1ère MT,
+            kickoff_2 (DateTimeField, nullable) = début 2ème MT.
+        """
+        status = (getattr(obj, "status", "") or "").upper()
+        now = timezone.now()
+
+        # mi-temps / pause -> figé à 45'
+        if status in ["HT", "PAUSED"]:
+            return 45
+
+        # match terminé -> figé à 90' (ou None si tu préfères rien afficher)
+        if status in ["FT", "FINISHED"]:
+            return 90
+
+        # match en cours -> calcul dynamique
+        if status == "LIVE":
+            kickoff_2 = getattr(obj, "kickoff_2", None)
+            kickoff_1 = getattr(obj, "kickoff_1", None)
+
+            # Si on a une heure de reprise 2e mi-temps
+            if kickoff_2:
+                diff_seconds = (now - kickoff_2).total_seconds()
+                raw_minute = 45 + int(diff_seconds // 60)
+                # protège contre valeurs trop petites
+                return max(46, raw_minute)
+
+            # Sinon on est en 1ère mi-temps
+            if kickoff_1:
+                diff_seconds = (now - kickoff_1).total_seconds()
+                raw_minute = int(diff_seconds // 60)
+                return max(0, raw_minute)
+
+        # par défaut
+        return None
