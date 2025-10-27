@@ -1,13 +1,12 @@
-# matches/serializers.py
 from rest_framework import serializers
-from django.utils import timezone  # ⬅️ ajouté
+from django.utils import timezone
 
 from .models import (
     Match, Goal, Card, Round,
     Lineup, TeamInfoPerMatch,
 )
 
-# Managers inverses dynamiques (goals/cards) – robustes si related_name change
+# Managers inverses dynamiques (goals/cards)
 GOALS_REL_NAME = Goal._meta.get_field("match").remote_field.get_accessor_name()
 CARDS_REL_NAME = Card._meta.get_field("match").remote_field.get_accessor_name()
 
@@ -16,31 +15,31 @@ CARDS_REL_NAME = Card._meta.get_field("match").remote_field.get_accessor_name()
 def _abs_any(request, value):
     """
     Retourne une URL absolue quelle que soit la nature du champ :
-    - Image/FileField -> .url
-    - str/URLField (déjà absolue ou relative) -> retourne tel quel (absolutise si besoin)
+    - File/ImageField (FieldFile) -> .url
+    - str (URLField) -> renvoyé tel quel si absolu, sinon absolutisé
+    Renvoie None si pas exploitable.
     """
     if not value:
         return None
 
-    # 1) File/Image field object
+    # Essayer d'obtenir .url (FieldFile)
     try:
-        url = value.url  # ex: FieldFile
+        url = value.url
     except Exception:
         url = None
 
-    # 2) String/URLField
+    # Sinon traiter 'value' comme string
     if url is None:
         url = str(value).strip()
         if not url:
             return None
 
-    # Absolutise si besoin
+    # Absolutiser si besoin
     if url.startswith("http://") or url.startswith("https://"):
         return url
     return request.build_absolute_uri(url) if request else url
 
 
-# Nom abrégé "A. Diallo"
 def _short_name(full: str | None) -> str | None:
     if not full:
         return None
@@ -81,9 +80,9 @@ class GoalSerializer(serializers.ModelSerializer):
     club_logo = serializers.SerializerMethodField()
 
     # Passeur
-    assist_name          = serializers.SerializerMethodField()
-    assist_short_name    = serializers.SerializerMethodField()
-    assist_player_photo  = serializers.SerializerMethodField()  # ⬅️ NOUVEAU
+    assist_name         = serializers.SerializerMethodField()
+    assist_short_name   = serializers.SerializerMethodField()
+    assist_player_photo = serializers.SerializerMethodField()
 
     # Drapeaux utiles
     is_penalty  = serializers.SerializerMethodField()
@@ -92,7 +91,7 @@ class GoalSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Goal
-        fields = "__all__"   # inclut les champs du modèle + nos SerializerMethodField déclarés ci-dessus
+        fields = "__all__"
 
     # ----- Buteur -----
     def get_player_name(self, obj):
@@ -127,8 +126,10 @@ class GoalSerializer(serializers.ModelSerializer):
 
     # ----- Passeur -----
     def get_assist_name(self, obj):
+        # priorité à assist_name libre
         if getattr(obj, "assist_name", None):
             return obj.assist_name
+        # fallback éventuels
         if getattr(obj, "assist", None):
             return obj.assist
         ap = getattr(obj, "assist_player", None)
@@ -217,8 +218,6 @@ class CardSerializer(serializers.ModelSerializer):
 class LineupSerializer(serializers.ModelSerializer):
     """
     Schéma plat attendu par le front.
-    - 'rating' est calculé de manière robuste (lineup.rating, puis lineup.note si présent)
-    - 'player_photo' renvoie une URL absolue si possible
     """
     club_name      = serializers.CharField(source="club.name", read_only=True)
     club_logo      = serializers.SerializerMethodField()
@@ -232,12 +231,10 @@ class LineupSerializer(serializers.ModelSerializer):
             "id", "match", "club", "club_name", "club_logo",
             "player", "player_name", "player_display",
             "number", "position", "is_starting", "is_captain",
-            # minutes_played supprimé côté lecture
             "rating",
             "player_photo",
         ]
 
-    # utilitaire absolu (tolère FieldFile ou str)
     def _abs_any_local(self, request, value):
         if not value:
             return None
@@ -259,13 +256,13 @@ class LineupSerializer(serializers.ModelSerializer):
         return self._abs_any_local(request, getattr(club, "logo", None) if club else None)
 
     def get_player_display(self, obj):
-        # priorité au champ libre de la ligne
+        # priorité au champ libre
         name = getattr(obj, "player_name", None)
         if name:
             name = str(name).strip()
             if name:
                 return name
-        # sinon, on compose depuis Player
+        # sinon nom joueur FK
         p = getattr(obj, "player", None)
         if not p:
             return None
@@ -280,7 +277,7 @@ class LineupSerializer(serializers.ModelSerializer):
 
     def get_player_photo(self, obj):
         request = self.context.get("request")
-        # 1) photo stockée sur la ligne (si tu l'utilises)
+        # 1) photo custom sur la ligne
         photo_line = getattr(obj, "photo", None)
         url = self._abs_any_local(request, photo_line)
         if url:
@@ -291,19 +288,14 @@ class LineupSerializer(serializers.ModelSerializer):
 
     def get_rating(self, obj):
         """
-        Lis, dans cet ordre, la note sous forme numérique :
-          - Lineup.rating (Decimal/float/str)
-          - Lineup.note (si le champ existe en DB / ou injecté côté queryset)
-        Accepte '6,8' -> 6.8. Ne jette jamais d'exception, retourne None sinon.
+        Retourne une note numérique (float) ou None.
         """
         try:
             val = getattr(obj, "rating", None)
             if val in (None, "") and hasattr(obj, "note"):
                 val = getattr(obj, "note", None)
-
             if isinstance(val, str):
                 val = val.replace(",", ".").strip()
-
             x = float(val)
             return x
         except Exception:
@@ -312,13 +304,7 @@ class LineupSerializer(serializers.ModelSerializer):
 
 # ---------- LINEUPS (write serializer) ----------
 class LineupWriteSerializer(serializers.ModelSerializer):
-    """
-    Serializer utilisé pour CREATE/UPDATE/PATCH.
-    - 'rating' devient écrivable.
-    - 'note' (alias) accepté en entrée et mappé vers 'rating'.
-    - minutes_played ignoré (non requis et non validé).
-    """
-    # alias d’entrée: permet d’envoyer {"note": 6.8} au lieu de {"rating": 6.8}
+    # alias d’entrée "note"
     note = serializers.CharField(
         write_only=True, required=False, allow_null=True, allow_blank=True
     )
@@ -329,10 +315,8 @@ class LineupWriteSerializer(serializers.ModelSerializer):
             "id", "match", "club", "player", "player_name",
             "number", "position", "is_starting", "is_captain",
             "rating", "note", "photo",
-            # minutes_played retiré côté écriture
         ]
         extra_kwargs = {
-            # sur PATCH partiel, rien n'est strictement requis
             "match": {"required": False},
             "club": {"required": False},
             "player": {"required": False},
@@ -356,18 +340,18 @@ class LineupWriteSerializer(serializers.ModelSerializer):
             return None
 
     def validate(self, attrs):
-        # map 'note' -> 'rating' si rating absent
         raw_note = self.initial_data.get("note", None)
         raw_rating = attrs.get("rating", None)
+
         if raw_rating in (None, "") and raw_note not in (None, ""):
             coerced = self._coerce_rating(raw_note)
             if coerced is not None:
                 attrs["rating"] = coerced
-        # normaliser rating si fourni
+
         if "rating" in attrs:
             attrs["rating"] = self._coerce_rating(attrs["rating"])
 
-        # minutes_played totalement ignoré
+        # minutes_played ignoré
         attrs.pop("minutes_played", None)
 
         return attrs
@@ -379,28 +363,19 @@ class TeamInfoSerializer(serializers.ModelSerializer):
         model = TeamInfoPerMatch
         fields = ["id", "match", "club", "formation", "coach_name"]
 
-# Rétro-compatibilité d'import
+# rétro-compat
 TeamInfoPerMatchSerializer = TeamInfoSerializer
 
 
-# ---------- TEAM LINEUP WRAPPER (pour /lineups) ----------
+# ---------- TEAM LINEUP WRAPPER ----------
 class TeamLineupSerializer(serializers.Serializer):
-    """
-    Wrapper pour un côté (home/away) afin de calculer la moyenne d'équipe.
-    Attendu sous forme de dict :
-    {
-      "club_id": int,
-      "club_name": str,
-      "players": <QuerySet[Lineup]> | [Lineup] | [dict déjà sérialisé]
-    }
-    """
     club_id = serializers.IntegerField()
     club_name = serializers.CharField()
     players = serializers.SerializerMethodField()
     team_avg_rating = serializers.SerializerMethodField()
 
     def get_players(self, obj):
-        from .serializers import LineupSerializer  # safe: résolu au runtime
+        from .serializers import LineupSerializer
         items = obj.get("players", [])
         return LineupSerializer(items, many=True, context=self.context).data
 
@@ -408,7 +383,7 @@ class TeamLineupSerializer(serializers.Serializer):
         raw_players = obj.get("players", []) or []
         ratings = []
 
-        # si ce sont des dicts déjà passés par LineupSerializer
+        # déjà sérialisés ?
         if raw_players and isinstance(raw_players[0], dict):
             for d in raw_players:
                 r = d.get("rating", None)
@@ -418,7 +393,7 @@ class TeamLineupSerializer(serializers.Serializer):
                     except Exception:
                         pass
         else:
-            from .serializers import LineupSerializer  # import tardif
+            from .serializers import LineupSerializer
             ls = LineupSerializer(raw_players, many=True, context=self.context)
             for d in ls.data:
                 r = d.get("rating", None)
@@ -446,14 +421,13 @@ class MatchSerializer(serializers.ModelSerializer):
     home_club_logo = serializers.SerializerMethodField()
     away_club_logo = serializers.SerializerMethodField()
 
-    # Expose formation + coach côté match (lu dans TeamInfoPerMatch)
-    home_formation   = serializers.SerializerMethodField()
-    away_formation   = serializers.SerializerMethodField()
-    home_coach_name  = serializers.SerializerMethodField()
-    away_coach_name  = serializers.SerializerMethodField()
+    home_formation  = serializers.SerializerMethodField()
+    away_formation  = serializers.SerializerMethodField()
+    home_coach_name = serializers.SerializerMethodField()
+    away_coach_name = serializers.SerializerMethodField()
 
-    # 👇 NOUVEAU: minute officielle calculée côté serveur
-    current_minute   = serializers.SerializerMethodField()
+    # minute dynamique serveur
+    current_minute  = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -466,15 +440,13 @@ class MatchSerializer(serializers.ModelSerializer):
             "home_score", "away_score",
             "status", "minute", "venue",
             "buteur",
-            # minute calculée côté serveur
             "current_minute",
-            # team info exposées au front:
             "home_formation", "away_formation",
             "home_coach_name", "away_coach_name",
-            # events:
             "goals", "cards",
         ]
 
+    # logos clubs
     def get_home_club_logo(self, obj):
         request = self.context.get("request")
         club = getattr(obj, "home_club", None)
@@ -487,19 +459,19 @@ class MatchSerializer(serializers.ModelSerializer):
         file_or_url = getattr(club, "logo", None) if club else None
         return _abs_any(request, file_or_url)
 
-    # ---- events ----
+    # events
     def get_goals(self, obj):
         mgr = getattr(obj, GOALS_REL_NAME, None)
         if mgr is not None and hasattr(mgr, "all"):
             qs = (
                 mgr.all()
-                .select_related("player", "club", "assist_player")  # ⬅️ assist_player préchargé
+                .select_related("player", "club", "assist_player")
                 .order_by("minute", "id")
             )
         else:
             qs = (
                 Goal.objects.filter(match=obj)
-                .select_related("player", "club", "assist_player")  # ⬅️ idem
+                .select_related("player", "club", "assist_player")
                 .order_by("minute", "id")
             )
         return GoalSerializer(qs, many=True, context=self.context).data
@@ -509,14 +481,17 @@ class MatchSerializer(serializers.ModelSerializer):
         if mgr is not None and hasattr(mgr, "all"):
             qs = mgr.all().select_related("player", "club").order_by("minute", "id")
         else:
-            qs = Card.objects.filter(match=obj).select_related("player", "club").order_by("minute", "id")
+            qs = (
+                Card.objects.filter(match=obj)
+                .select_related("player", "club")
+                .order_by("minute", "id")
+            )
         return CardSerializer(qs, many=True, context=self.context).data
 
-    # ---- team info (formation / coach) ----
+    # team info (formation / coach)
     def _team_info_map(self, obj):
         """
-        Retourne {club_id: TeamInfoPerMatch} pour ce match,
-        mis en cache dans le contexte du serializer (évite double requête).
+        Cache local pour éviter 2 requêtes TeamInfoPerMatch.
         """
         cache_key = f"_ti_cache_{id(obj)}"
         ctx = self.context
@@ -548,47 +523,60 @@ class MatchSerializer(serializers.ModelSerializer):
         ti = mapping.get(getattr(obj, "away_club_id", None))
         return getattr(ti, "coach_name", "") if ti else ""
 
-    # ---- minute officielle serveur ----
+    # minute dynamique serveur
     def get_current_minute(self, obj):
         """
-        But: donner une minute cohérente pour TOUS les clients sans qu'ils la fassent évoluer tous seuls.
+        Renvoie un ENTIER représentant la minute actuelle du match,
+        pour que le front puisse afficher:
+          - "0'"..."44'"..."45’+"..."90’+" etc.
         Règle:
-          - "LIVE" => calcule minute actuelle à partir de kickoff_1 / kickoff_2
-          - "HT" ou "PAUSED" => renvoie 45
-          - "FT"/"FINISHED" => renvoie 90
-          - sinon => None
-        Conditions:
-          - Le modèle Match doit avoir kickoff_1 (DateTimeField) = début 1ère MT,
-            kickoff_2 (DateTimeField, nullable) = début 2ème MT.
+          - HT / PAUSED  => 45
+          - FT / FINISHED => 90
+          - LIVE 1ère MT => floor((now - kickoff_1)/60)
+          - LIVE 2ème MT => 45 + floor((now - kickoff_2)/60)
+        On clamp:
+          - 1ère MT: min >= 0
+          - 2ème MT: min >= 46
+        Si on ne peut pas calculer (pas de kickoff_*), fallback sur obj.minute.
+        Sinon None.
         """
         status = (getattr(obj, "status", "") or "").upper()
         now = timezone.now()
 
-        # mi-temps / pause -> figé à 45'
+        # pause mi-temps
         if status in ["HT", "PAUSED"]:
             return 45
 
-        # match terminé -> figé à 90' (ou None si tu préfères rien afficher)
+        # terminé
         if status in ["FT", "FINISHED"]:
             return 90
 
-        # match en cours -> calcul dynamique
         if status == "LIVE":
             kickoff_2 = getattr(obj, "kickoff_2", None)
             kickoff_1 = getattr(obj, "kickoff_1", None)
 
-            # Si on a une heure de reprise 2e mi-temps
+            # 2e mi-temps connue ?
             if kickoff_2:
                 diff_seconds = (now - kickoff_2).total_seconds()
                 raw_minute = 45 + int(diff_seconds // 60)
-                # protège contre valeurs trop petites
-                return max(46, raw_minute)
+                # on ne veut jamais retourner <46 en 2e
+                if raw_minute < 46:
+                    raw_minute = 46
+                return raw_minute
 
-            # Sinon on est en 1ère mi-temps
+            # sinon 1ère mi-temps
             if kickoff_1:
                 diff_seconds = (now - kickoff_1).total_seconds()
                 raw_minute = int(diff_seconds // 60)
-                return max(0, raw_minute)
+                if raw_minute < 0:
+                    raw_minute = 0
+                return raw_minute
 
-        # par défaut
+        # fallback sur minute manuelle (historique dans DB)
+        if hasattr(obj, "minute"):
+            try:
+                return int(obj.minute)
+            except Exception:
+                pass
+
         return None

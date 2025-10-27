@@ -63,9 +63,16 @@ class Match(models.Model):
     home_score = models.PositiveIntegerField(default=0)
     away_score = models.PositiveIntegerField(default=0)
 
+    #Important:
+    # - "SCHEDULED" tant que ça n'a pas démarré
+    # - "LIVE" pendant qu'on joue
+    # - "HT"/"PAUSED" à la mi-temps
+    # - "FT"/"FINISHED" à la fin
     status = models.CharField(max_length=12, choices=MATCH_STATUS, default="SCHEDULED")
 
-    # minute "manuelle" historique (garde-le pour compat si tu remplis ça aujourd'hui)
+    # minute "manuelle" historique (legacy)
+    # On la garde pour compatibilité / affichage admin rapide.
+    # Le front NE DOIT PLUS s'y fier pour l'horloge en direct.
     minute = models.PositiveIntegerField(default=0)
 
     venue = models.CharField(max_length=120, blank=True)
@@ -75,7 +82,9 @@ class Match(models.Model):
         max_length=120, blank=True, default="", help_text="Nom du buteur principal"
     )
 
-    # ⬇⬇ NOUVEAU : horodatages réels des coups d'envoi, utilisés pour calculer la minute côté serveur
+    # Horodatages réels des coups d'envoi, utilisés pour calculer la minute serveur.
+    # kickoff_1 = début 1ère mi-temps (quand on passe pour la première fois en LIVE)
+    # kickoff_2 = début 2ème mi-temps (quand on sort de HT/PAUSED et qu'on remet LIVE)
     kickoff_1 = models.DateTimeField(
         null=True,
         blank=True,
@@ -101,6 +110,36 @@ class Match(models.Model):
                 name="uniq_round_home_away_in_round",
             ),
         ]
+
+    # -------- Helpers utiles pour debug / admin rapide --------
+    def is_live_now(self):
+        """
+        True si le match est considéré en cours de jeu (1ère ou 2ème MT),
+        c.-à-d. status == LIVE.
+        """
+        return (self.status or "").upper() == "LIVE"
+
+    def current_phase(self):
+        """
+        Renvoie "1H", "2H", "HT", "FT", etc. juste pour debug humain.
+        - "1H" si LIVE et kickoff_2 est encore vide -> 1ère mi-temps
+        - "2H" si LIVE et kickoff_2 est rempli -> 2ème mi-temps
+        - "HT" si status HT/PAUSED
+        - "FT" si FT/FINISHED
+        - "PRE" sinon
+        """
+        st = (self.status or "").upper()
+        if st in ["FT", "FINISHED"]:
+            return "FT"
+        if st in ["HT", "PAUSED"]:
+            return "HT"
+        if st == "LIVE":
+            if self.kickoff_2:
+                return "2H"
+            if self.kickoff_1:
+                return "1H"
+            return "LIVE?"
+        return "PRE"
 
     def clean(self):
         super().clean()

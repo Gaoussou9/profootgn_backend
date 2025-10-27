@@ -14,7 +14,6 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAdminUser
 
-# ⬇️ Filtres DRF
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Match, Goal, Card, Round, Lineup, TeamInfoPerMatch
@@ -32,6 +31,7 @@ from players.models import Player
 from clubs.models import Club
 from collections import defaultdict
 
+
 GOALS_REL_NAME = Goal._meta.get_field("match").remote_field.get_accessor_name()
 CARDS_REL_NAME = Card._meta.get_field("match").remote_field.get_accessor_name()
 
@@ -41,6 +41,80 @@ class ReadOnlyOrAdmin(permissions.IsAdminUser):
         if request.method in permissions.SAFE_METHODS:
             return True
         return super().has_permission(request, view)
+
+
+# ----------------------------------------------------
+# Horloge live envoyée au front
+# ----------------------------------------------------
+def _clock_payload_for_match(m: Match):
+    """
+    On renvoie au front assez d'info pour animer la minute localement
+    entre deux rafraichissements API.
+
+    Convention:
+    - live_phase_start: ISO timestamp (UTC aware) du début de la période en cours
+        * 1ère MT -> kickoff_1
+        * 2ème MT -> kickoff_2
+    - live_phase_offset: offset de minutes déjà jouées au moment de ce start
+        * 1ère MT -> 0
+        * 2ème MT -> 45
+
+    Le front peut ensuite faire :
+        nowDiffMin = floor((now - live_phase_start)/60)
+        minute = live_phase_offset + nowDiffMin
+        puis appliquer l'affichage ("45’+", "90’+", etc.)
+
+    Pour les statuts qui ne bougent pas (HT, FT...), on renvoie None/None,
+    ce qui indique au front qu'il ne doit PAS animer.
+    """
+    st = (getattr(m, "status", "") or "").upper()
+
+    if st == "LIVE":
+        # Deuxième mi-temps ?
+        if getattr(m, "kickoff_2", None):
+            return {
+                "live_phase_start": m.kickoff_2.isoformat(),
+                "live_phase_offset": 45,
+            }
+        # Première mi-temps ?
+        if getattr(m, "kickoff_1", None):
+            return {
+                "live_phase_start": m.kickoff_1.isoformat(),
+                "live_phase_offset": 0,
+            }
+        # LIVE sans kickoff_1 -> pas normal mais on met None
+        return {
+            "live_phase_start": None,
+            "live_phase_offset": None,
+        }
+
+    # HT / PAUSED / FT / FINISHED / SCHEDULED / etc.
+    return {
+        "live_phase_start": None,
+        "live_phase_offset": None,
+    }
+
+
+def _augment_matches_with_clock(matches, request):
+    """
+    matches: iterable d'instances Match
+    -> retourne une liste de dicts (serializer.data) avec les champs en plus :
+         - live_phase_start
+         - live_phase_offset
+
+    IMPORTANT:
+    On passe "request" dans le serializer context pour que
+    MatchSerializer -> GoalSerializer / CardSerializer / LineupSerializer
+    puissent construire les URLs ABSOLUES (logos, photos).
+    """
+    out = []
+    for m in matches:
+        base = MatchSerializer(m, context={"request": request}).data
+        clock_info = _clock_payload_for_match(m)
+        base["live_phase_start"] = clock_info["live_phase_start"]
+        base["live_phase_offset"] = clock_info["live_phase_offset"]
+        out.append(base)
+    return out
 
 
 class MatchViewSet(viewsets.ModelViewSet):
@@ -117,26 +191,49 @@ class MatchViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    # On override list / retrieve / custom actions
+    # pour injecter live_phase_start/live_phase_offset
+    # ET pour conserver les URLs absolues via request.
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        data = _augment_matches_with_clock(qs, request)
+        return Response(data)
+
+    def retrieve(self, request, *args, **kwargs):
+        m = self.get_object()
+        data = _augment_matches_with_clock([m], request)[0]
+        return Response(data)
+
     @action(detail=False, methods=["get"])
     def recent(self, request):
-        limit = int(request.query_params.get("page_size") or request.query_params.get("limit") or 10)
+        limit = int(
+            request.query_params.get("page_size")
+            or request.query_params.get("limit")
+            or 10
+        )
         qs = (
             self.get_queryset()
             .filter(status__in=["FT", "FINISHED"])
             .order_by("-datetime", "-id")[:limit]
         )
-        return Response(self.get_serializer(qs, many=True).data)
+        data = _augment_matches_with_clock(qs, request)
+        return Response(data)
 
     @action(detail=False, methods=["get"])
     def upcoming(self, request):
-        limit = int(request.query_params.get("page_size") or request.query_params.get("limit") or 10)
+        limit = int(
+            request.query_params.get("page_size")
+            or request.query_params.get("limit")
+            or 10
+        )
         now = timezone.now()
         qs = (
             self.get_queryset()
             .filter(status="SCHEDULED", datetime__gte=now)
             .order_by("datetime", "id")[:limit]
         )
-        return Response(self.get_serializer(qs, many=True).data)
+        data = _augment_matches_with_clock(qs, request)
+        return Response(data)
 
     @action(detail=False, methods=["get"])
     def live(self, request):
@@ -145,9 +242,15 @@ class MatchViewSet(viewsets.ModelViewSet):
             .filter(status__in=["LIVE", "HT", "PAUSED"])
             .order_by("-datetime", "-id")
         )
-        return Response(self.get_serializer(qs, many=True).data)
+        data = _augment_matches_with_clock(qs, request)
+        return Response(data)
 
-    @action(detail=True, methods=["get"], url_path="lineups", permission_classes=[permissions.AllowAny])
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="lineups",
+        permission_classes=[permissions.AllowAny],
+    )
     def action_lineups(self, request, pk=None):
         qs = (
             Lineup.objects.filter(match_id=pk)
@@ -157,7 +260,12 @@ class MatchViewSet(viewsets.ModelViewSet):
         data = LineupSerializer(qs, many=True, context={"request": request}).data
         return Response(data)
 
-    @action(detail=True, methods=["get", "put"], url_path="team-info", permission_classes=[ReadOnlyOrAdmin])
+    @action(
+        detail=True,
+        methods=["get", "put"],
+        url_path="team-info",
+        permission_classes=[ReadOnlyOrAdmin],
+    )
     def action_team_info(self, request, pk=None):
         m = get_object_or_404(Match, pk=pk)
 
@@ -192,22 +300,40 @@ class GoalViewSet(viewsets.ModelViewSet):
     queryset = Goal.objects.select_related("match", "player", "club")
     serializer_class = GoalSerializer
 
-    @action(detail=False, methods=["get"], url_path="by-match", permission_classes=[permissions.AllowAny])
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="by-match",
+        permission_classes=[permissions.AllowAny],
+    )
     def by_match(self, request):
         mid = request.query_params.get("match")
         if not mid:
             return Response({"detail": "Paramètre 'match' requis."}, status=400)
-        qs = Goal.objects.filter(match_id=mid).select_related("player", "club").order_by("minute", "id")
-        return Response(GoalSerializer(qs, many=True, context={"request": request}).data)
+        qs = (
+            Goal.objects.filter(match_id=mid)
+            .select_related("player", "club")
+            .order_by("minute", "id")
+        )
+        return Response(
+            GoalSerializer(qs, many=True, context={"request": request}).data
+        )
 
-    @action(detail=False, methods=["post"], url_path="bulk", permission_classes=[IsAdminUser])
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk",
+        permission_classes=[IsAdminUser],
+    )
     def bulk(self, request):
         match_id = request.data.get("match")
         goals_in = request.data.get("goals", [])
         replace = bool(request.data.get("replace"))
 
         if not match_id or not isinstance(goals_in, list):
-            return Response({"ok": False, "detail": "Paramètres invalides."}, status=400)
+            return Response(
+                {"ok": False, "detail": "Paramètres invalides."}, status=400
+            )
 
         match = get_object_or_404(Match, pk=match_id)
         allowed_clubs = {match.home_club_id, match.away_club_id}
@@ -240,9 +366,13 @@ class GoalViewSet(viewsets.ModelViewSet):
                     player = get_object_or_404(Player, pk=player_id)
                 elif player_name:
                     if hasattr(Player, "club"):
-                        player = Player.objects.filter(name__iexact=player_name, club=club).first()
+                        player = Player.objects.filter(
+                            name__iexact=player_name, club=club
+                        ).first()
                         if not player:
-                            player, _ = Player.objects.get_or_create(name=player_name, defaults={"club": club})
+                            player, _ = Player.objects.get_or_create(
+                                name=player_name, defaults={"club": club}
+                            )
                         elif getattr(player, "club_id", None) is None:
                             player.club = club
                             player.save(update_fields=["club"])
@@ -250,15 +380,21 @@ class GoalViewSet(viewsets.ModelViewSet):
                         player, _ = Player.objects.get_or_create(name=player_name)
 
                 assist_player = None
-                assist_name = (g.get("assist_name") or g.get("assist_player_name") or "").strip()
+                assist_name = (
+                    g.get("assist_name") or g.get("assist_player_name") or ""
+                ).strip()
                 assist_id = g.get("assist_player")
                 if assist_id:
                     assist_player = get_object_or_404(Player, pk=assist_id)
                 elif assist_name:
                     if hasattr(Player, "club"):
-                        assist_player = Player.objects.filter(name__iexact=assist_name, club=club).first()
+                        assist_player = Player.objects.filter(
+                            name__iexact=assist_name, club=club
+                        ).first()
                         if not assist_player:
-                            assist_player, _ = Player.objects.get_or_create(name=assist_name, defaults={"club": club})
+                            assist_player, _ = Player.objects.get_or_create(
+                                name=assist_name, defaults={"club": club}
+                            )
                         elif getattr(assist_player, "club_id", None) is None:
                             assist_player.club = club
                             assist_player.save(update_fields=["club"])
@@ -279,8 +415,14 @@ class GoalViewSet(viewsets.ModelViewSet):
             if to_create:
                 Goal.objects.bulk_create(to_create)
 
-        qs = Goal.objects.filter(match=match).select_related("player", "club").order_by("minute", "id")
-        data = GoalSerializer(qs, many=True, context={"request": request}).data
+        qs = (
+            Goal.objects.filter(match=match)
+            .select_related("player", "club")
+            .order_by("minute", "id")
+        )
+        data = GoalSerializer(
+            qs, many=True, context={"request": request}
+        ).data
         return Response({"ok": True, "created": data})
 
 
@@ -316,7 +458,12 @@ class LineupViewSet(
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = {"match": ["exact"], "club": ["exact"], "is_starting": ["exact"]}
-    search_fields = ["player_name", "player__name", "player__first_name", "player__last_name"]
+    search_fields = [
+        "player_name",
+        "player__name",
+        "player__first_name",
+        "player__last_name",
+    ]
     ordering_fields = ["match", "club", "is_starting", "number", "id"]
     ordering = ["match", "club", "-is_starting", "number", "id"]
 
@@ -453,12 +600,13 @@ def modifier_match(request):
         if c:
             m.away_club = c
 
-    # Scores / minute manuelle (toujours supportée)
+    # Scores / minute "manuelle" historique
     if "home_score" in request.POST or "score1" in request.POST:
         m.home_score = _to_int(_post(request, "home_score") or _post(request, "score1"), m.home_score)
     if "away_score" in request.POST or "score2" in request.POST:
         m.away_score = _to_int(_post(request, "away_score") or _post(request, "score2"), m.away_score)
     if "minute" in request.POST:
+        # minute reste juste une valeur legacy de secours.
         m.minute = _to_int(_post(request, "minute"), m.minute)
 
     # Round
@@ -467,17 +615,17 @@ def modifier_match(request):
         if r:
             m.round = r
 
-    # Status (→ on gère kickoff_1 / kickoff_2 ici)
+    # Status (et gestion des coups d'envoi)
     if "status" in request.POST:
         new_status = (_post(request, "status") or m.status).upper()
 
-        # si on (re)met en LIVE
         if new_status == "LIVE":
-            # 1ère MT : si kickoff_1 pas encore défini, on le pose maintenant
+            # Début / reprise du match
+            # 1ère MT : si kickoff_1 pas encore défini -> on le pose maintenant
             if m.kickoff_1 is None:
                 m.kickoff_1 = timezone.now()
 
-            # 2ème MT : si on sortait de HT/PAUSED et pas encore de kickoff_2
+            # 2ème MT : si on sort de HT/PAUSED et kickoff_2 pas encore défini -> on le pose maintenant
             if m.status in ["HT", "PAUSED"] and m.kickoff_2 is None:
                 m.kickoff_2 = timezone.now()
 
@@ -518,18 +666,33 @@ def suspendre_match(request):
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def standings_view(request):
-    include_live = str(request.query_params.get("include_live", "1")).lower() in {"1", "true", "yes", "on"}
-    debug_flag = str(request.query_params.get("debug", "0")).lower() in {"1", "true", "yes", "on"}
+    include_live = str(request.query_params.get("include_live", "1")).lower() in {
+        "1", "true", "yes", "on"
+    }
+    debug_flag = str(request.query_params.get("debug", "0")).lower() in {
+        "1", "true", "yes", "on"
+    }
 
     finished = ("FT", "FINISHED")
     liveish = ("LIVE", "HT", "PAUSED")
 
     def _abs_logo(club):
+        """
+        URL absolue du logo club (ou None).
+        """
         if not club or not getattr(club, "logo", None):
             return None
-        url = club.logo.url
-        return request.build_absolute_uri(url) if request else url
+        try:
+            raw = club.logo.url
+        except Exception:
+            raw = str(getattr(club, "logo", "")).strip()
+            if not raw:
+                return None
+        if raw.startswith("http://") or raw.startswith("https://"):
+            return raw
+        return request.build_absolute_uri(raw) if request else raw
 
+    # tableau init
     rows = {}
     for c in Club.objects.all().order_by("name"):
         rows[c.id] = {
@@ -553,6 +716,7 @@ def standings_view(request):
         .order_by("datetime", "id")
     )
 
+    # fallback si pas de matches terminés sans include_live
     if not qs.exists() and not include_live:
         statuses = finished + liveish
         qs = (
@@ -597,7 +761,14 @@ def standings_view(request):
         r["goal_diff"] = r["goals_for"] - r["goals_against"]
         out.append(r)
 
-    out.sort(key=lambda x: (-x["points"], -x["goal_diff"], -x["goals_for"], x["club_name"].lower()))
+    out.sort(
+        key=lambda x: (
+            -x["points"],
+            -x["goal_diff"],
+            -x["goals_for"],
+            x["club_name"].lower(),
+        )
+    )
 
     if debug_flag:
         return Response(
@@ -615,6 +786,9 @@ def standings_view(request):
 
 # ---------- utilitaires communs ----------
 def _abs_media(request, file_or_url):
+    """
+    Renvoyer une URL absolue pour une image/joueur/club.
+    """
     if not file_or_url:
         return None
     try:
@@ -636,16 +810,23 @@ def _player_fullname(p):
 
 def _is_own_goal(goal):
     t = (getattr(goal, "type", "") or getattr(goal, "kind", "") or "").upper()
-    return bool(getattr(goal, "own_goal", False)) or t in {"OG", "CSC", "OWN_GOAL", "OWNGOAL"}
+    return bool(getattr(goal, "own_goal", False)) or t in {
+        "OG",
+        "CSC",
+        "OWN_GOAL",
+        "OWNGOAL",
+    }
 
 
-# -------------------------------------------------------
-# Classement des passeurs (avec garde anti self-assist)
-# -------------------------------------------------------
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def assists_leaders(request):
-    include_live = str(request.query_params.get("include_live", "1")).lower() in {"1", "true", "yes", "on"}
+    include_live = str(request.query_params.get("include_live", "1")).lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     try:
         limit = int(request.query_params.get("limit") or 100)
     except Exception:
@@ -662,7 +843,14 @@ def assists_leaders(request):
     goals_qs = (
         Goal.objects.filter(match__in=matches_qs)
         .select_related("assist_player", "assist_player__club", "player", "club")
-        .only("id", "assist_player_id", "assist_name", "player_id", "player_name", "club_id")
+        .only(
+            "id",
+            "assist_player_id",
+            "assist_name",
+            "player_id",
+            "player_name",
+            "club_id",
+        )
         .order_by("id")
     )
     if club_id:
@@ -674,7 +862,14 @@ def assists_leaders(request):
         ps = (
             Player.objects.filter(club_id__in=club_ids)
             .select_related("club")
-            .only("id", "name", "first_name", "last_name", "club_id", "photo")
+            .only(
+                "id",
+                "name",
+                "first_name",
+                "last_name",
+                "club_id",
+                "photo",
+            )
         )
         for p in ps:
             nm = _player_fullname(p)
@@ -685,24 +880,23 @@ def assists_leaders(request):
     meta = {}
 
     for g in goals_qs:
-        # résout le buteur (pour éviter de compter self-assist)
         scorer = g.player
         if not scorer:
             pname = (getattr(g, "player_name", "") or "").strip().lower()
             scorer = name_index.get((g.club_id, pname))
         scorer_id = getattr(scorer, "id", None)
 
-        # résout le passeur
         p = g.assist_player
         if not p:
             nm = (g.assist_name or "").strip().lower()
             if nm:
                 p = name_index.get((g.club_id, nm))
         if not p:
-            continue  # pas de joueur fiable ⇒ on ignore
+            continue
 
+        # pas d'assist créditée au buteur lui-même
         if scorer_id and getattr(p, "id", None) == scorer_id:
-            continue  # garde anti self-assist
+            continue
 
         counts[p.id] += 1
         if p.id not in meta:
@@ -713,7 +907,9 @@ def assists_leaders(request):
                 "player_photo": _abs_media(request, getattr(p, "photo", None)),
                 "club_id": getattr(club, "id", None),
                 "club_name": getattr(club, "name", None),
-                "club_logo": _abs_media(request, getattr(club, "logo", None) if club else None),
+                "club_logo": _abs_media(
+                    request, getattr(club, "logo", None) if club else None
+                ),
             }
 
     rows = [{**meta[pid], "assists": int(n)} for pid, n in counts.items()]
@@ -723,9 +919,6 @@ def assists_leaders(request):
     return Response(rows)
 
 
-# -------------------------------------------------------
-# Recherche joueurs (auto-complétion)
-# -------------------------------------------------------
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def search_players(request):
@@ -757,7 +950,11 @@ def search_players(request):
     out = []
     for p in qs:
         club = getattr(p, "club", None)
-        name = getattr(p, "name", None) or f"{getattr(p,'first_name','')} {getattr(p,'last_name','')}".strip() or f"Joueur #{p.pk}"
+        name = (
+            getattr(p, "name", None)
+            or f"{getattr(p,'first_name','')} {getattr(p,'last_name','')}".strip()
+            or f"Joueur #{p.pk}"
+        )
         out.append(
             {
                 "id": p.id,
@@ -769,9 +966,6 @@ def search_players(request):
     return Response(out)
 
 
-# =======================================================
-# Stats joueurs d’un club (anti self-assist incluse)
-# =======================================================
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def club_players_stats(request, club_id: int):
@@ -800,7 +994,6 @@ def club_players_stats(request, club_id: int):
         .order_by("minute", "id")
     )
     for g in goals:
-        # --- buteur (sans CSC) ---
         scorer_pid = None
         if not _is_own_goal(g):
             if g.player_id:
@@ -812,7 +1005,6 @@ def club_players_stats(request, club_id: int):
             if scorer_pid in id_to_player:
                 agg[scorer_pid]["goals"] += 1
 
-        # --- passeur (ignore self-assist) ---
         aid = None
         raw_assist = (getattr(g, "assist_name", "") or "").strip()
         if getattr(g, "assist_player_id", None):
@@ -862,5 +1054,16 @@ def club_players_stats(request, club_id: int):
             }
         )
 
-    rows.sort(key=lambda r: (-r["goals"], -r["assists"], (r["name"] or "").lower()))
-    return Response({"club": {"id": club.id, "name": club.name, "logo": _abs_media(request, getattr(club, "logo", None))}, "players": rows})
+    rows.sort(
+        key=lambda r: (-r["goals"], -r["assists"], (r["name"] or "").lower())
+    )
+    return Response(
+        {
+            "club": {
+                "id": club.id,
+                "name": club.name,
+                "logo": _abs_media(request, getattr(club, "logo", None)),
+            },
+            "players": rows,
+        }
+    )
