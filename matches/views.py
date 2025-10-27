@@ -443,6 +443,7 @@ def modifier_match(request):
 
     m = get_object_or_404(Match, pk=mid)
 
+    # Clubs
     if "home_id" in request.POST or "team1" in request.POST or "home" in request.POST:
         c = _resolve_club(_post(request, "home_id") or _post(request, "team1") or _post(request, "home"))
         if c:
@@ -452,6 +453,7 @@ def modifier_match(request):
         if c:
             m.away_club = c
 
+    # Scores / minute manuelle (toujours supportée)
     if "home_score" in request.POST or "score1" in request.POST:
         m.home_score = _to_int(_post(request, "home_score") or _post(request, "score1"), m.home_score)
     if "away_score" in request.POST or "score2" in request.POST:
@@ -459,12 +461,29 @@ def modifier_match(request):
     if "minute" in request.POST:
         m.minute = _to_int(_post(request, "minute"), m.minute)
 
+    # Round
     if "journee" in request.POST or "round_id" in request.POST:
         r = _resolve_round(_post(request, "journee") or _post(request, "round_id"))
         if r:
             m.round = r
+
+    # Status (→ on gère kickoff_1 / kickoff_2 ici)
     if "status" in request.POST:
-        m.status = (_post(request, "status") or m.status).upper()
+        new_status = (_post(request, "status") or m.status).upper()
+
+        # si on (re)met en LIVE
+        if new_status == "LIVE":
+            # 1ère MT : si kickoff_1 pas encore défini, on le pose maintenant
+            if m.kickoff_1 is None:
+                m.kickoff_1 = timezone.now()
+
+            # 2ème MT : si on sortait de HT/PAUSED et pas encore de kickoff_2
+            if m.status in ["HT", "PAUSED"] and m.kickoff_2 is None:
+                m.kickoff_2 = timezone.now()
+
+        m.status = new_status
+
+    # Lieu / datetime / buteur
     if "venue" in request.POST:
         m.venue = _post(request, "venue") or ""
     if "datetime" in request.POST or "kickoff_at" in request.POST:
