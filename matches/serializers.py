@@ -529,14 +529,13 @@ class MatchSerializer(serializers.ModelSerializer):
         Renvoie un ENTIER représentant la minute actuelle du match,
         pour que le front puisse afficher:
           - "0'"..."44'"..."45’+"..."90’+" etc.
+
         Règle:
-          - HT / PAUSED  => 45
-          - FT / FINISHED => 90
-          - LIVE 1ère MT => floor((now - kickoff_1)/60)
-          - LIVE 2ème MT => 45 + floor((now - kickoff_2)/60)
-        On clamp:
-          - 1ère MT: min >= 0
-          - 2ème MT: min >= 46
+          - HT / PAUSED     => 45
+          - FT / FINISHED   => 90
+          - LIVE 2e MT      => max(46, 45 + floor((now - kickoff_2)/60))
+          - LIVE 1ère MT    => max(0, floor((now - kickoff_1)/60))
+
         Si on ne peut pas calculer (pas de kickoff_*), fallback sur obj.minute.
         Sinon None.
         """
@@ -572,7 +571,7 @@ class MatchSerializer(serializers.ModelSerializer):
                     raw_minute = 0
                 return raw_minute
 
-        # fallback sur minute manuelle (historique dans DB)
+        # fallback sur minute manuelle (legacy en DB)
         if hasattr(obj, "minute"):
             try:
                 return int(obj.minute)

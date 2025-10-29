@@ -1,4 +1,3 @@
-# matches/views.py
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.db import transaction
@@ -49,46 +48,46 @@ class ReadOnlyOrAdmin(permissions.IsAdminUser):
 def _clock_payload_for_match(m: Match):
     """
     On renvoie au front assez d'info pour animer la minute localement
-    entre deux rafraichissements API.
+    entre deux rafraîchissements API.
 
     Convention:
-    - live_phase_start: ISO timestamp (UTC aware) du début de la période en cours
+    - live_phase_start: ISO timestamp (timezone-aware) du début de la période en cours
         * 1ère MT -> kickoff_1
         * 2ème MT -> kickoff_2
-    - live_phase_offset: offset de minutes déjà jouées au moment de ce start
+    - live_phase_offset: minutes déjà jouées au début de cette période
         * 1ère MT -> 0
         * 2ème MT -> 45
 
     Le front peut ensuite faire :
-        nowDiffMin = floor((now - live_phase_start)/60)
+        nowDiffMin = floor((Date.now - live_phase_start)/60s)
         minute = live_phase_offset + nowDiffMin
-        puis appliquer l'affichage ("45’+", "90’+", etc.)
+        puis afficher "45’+" etc.
 
-    Pour les statuts qui ne bougent pas (HT, FT...), on renvoie None/None,
-    ce qui indique au front qu'il ne doit PAS animer.
+    Pour les statuts statiques (HT, FT...), on renvoie None/None.
+    Ça dit au front: pas d'animation.
     """
     st = (getattr(m, "status", "") or "").upper()
 
     if st == "LIVE":
-        # Deuxième mi-temps ?
+        # 2e mi-temps ?
         if getattr(m, "kickoff_2", None):
             return {
                 "live_phase_start": m.kickoff_2.isoformat(),
                 "live_phase_offset": 45,
             }
-        # Première mi-temps ?
+        # 1ère mi-temps ?
         if getattr(m, "kickoff_1", None):
             return {
                 "live_phase_start": m.kickoff_1.isoformat(),
                 "live_phase_offset": 0,
             }
-        # LIVE sans kickoff_1 -> pas normal mais on met None
+        # LIVE mais pas de kickoff connu -> rien
         return {
             "live_phase_start": None,
             "live_phase_offset": None,
         }
 
-    # HT / PAUSED / FT / FINISHED / SCHEDULED / etc.
+    # HT / PAUSED / FT / FINISHED / SCHEDULED / etc => pas d'horloge qui bouge
     return {
         "live_phase_start": None,
         "live_phase_offset": None,
@@ -98,13 +97,13 @@ def _clock_payload_for_match(m: Match):
 def _augment_matches_with_clock(matches, request):
     """
     matches: iterable d'instances Match
-    -> retourne une liste de dicts (serializer.data) avec les champs en plus :
+    -> retourne une liste de dicts (serializer.data) avec en plus :
          - live_phase_start
          - live_phase_offset
 
     IMPORTANT:
     On passe "request" dans le serializer context pour que
-    MatchSerializer -> GoalSerializer / CardSerializer / LineupSerializer
+    MatchSerializer / GoalSerializer / CardSerializer / LineupSerializer
     puissent construire les URLs ABSOLUES (logos, photos).
     """
     out = []
@@ -191,9 +190,7 @@ class MatchViewSet(viewsets.ModelViewSet):
 
         return qs
 
-    # On override list / retrieve / custom actions
-    # pour injecter live_phase_start/live_phase_offset
-    # ET pour conserver les URLs absolues via request.
+    # list / retrieve / actions custom => on ajoute live_phase_* et on garde request
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
         data = _augment_matches_with_clock(qs, request)
@@ -600,13 +597,12 @@ def modifier_match(request):
         if c:
             m.away_club = c
 
-    # Scores / minute "manuelle" historique
+    # Scores / minute (minute reste un fallback legacy)
     if "home_score" in request.POST or "score1" in request.POST:
         m.home_score = _to_int(_post(request, "home_score") or _post(request, "score1"), m.home_score)
     if "away_score" in request.POST or "score2" in request.POST:
         m.away_score = _to_int(_post(request, "away_score") or _post(request, "score2"), m.away_score)
     if "minute" in request.POST:
-        # minute reste juste une valeur legacy de secours.
         m.minute = _to_int(_post(request, "minute"), m.minute)
 
     # Round
@@ -615,17 +611,17 @@ def modifier_match(request):
         if r:
             m.round = r
 
-    # Status (et gestion des coups d'envoi)
+    # Status (et gestion des kicks off)
     if "status" in request.POST:
         new_status = (_post(request, "status") or m.status).upper()
 
         if new_status == "LIVE":
-            # Début / reprise du match
-            # 1ère MT : si kickoff_1 pas encore défini -> on le pose maintenant
+            # Si on passe LIVE :
+            # 1ère MT : kickoff_1 manquant -> le définir maintenant.
             if m.kickoff_1 is None:
                 m.kickoff_1 = timezone.now()
 
-            # 2ème MT : si on sort de HT/PAUSED et kickoff_2 pas encore défini -> on le pose maintenant
+            # Reprise 2ème MT : si on venait de HT/PAUSED et kickoff_2 pas encore défini -> le définir maintenant.
             if m.status in ["HT", "PAUSED"] and m.kickoff_2 is None:
                 m.kickoff_2 = timezone.now()
 
@@ -716,7 +712,7 @@ def standings_view(request):
         .order_by("datetime", "id")
     )
 
-    # fallback si pas de matches terminés sans include_live
+    # fallback si pas de matches terminés (ex: début de saison) ET include_live=0
     if not qs.exists() and not include_live:
         statuses = finished + liveish
         qs = (
@@ -787,7 +783,7 @@ def standings_view(request):
 # ---------- utilitaires communs ----------
 def _abs_media(request, file_or_url):
     """
-    Renvoyer une URL absolue pour une image/joueur/club.
+    Renvoyer une URL absolue pour une image (photo joueur, logo club...).
     """
     if not file_or_url:
         return None
