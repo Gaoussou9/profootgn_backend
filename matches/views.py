@@ -47,24 +47,13 @@ class ReadOnlyOrAdmin(permissions.IsAdminUser):
 # ----------------------------------------------------
 def _clock_payload_for_match(m: Match):
     """
-    On renvoie au front assez d'info pour animer la minute localement
-    entre deux rafraîchissements API.
-
-    Convention:
-    - live_phase_start: ISO timestamp (timezone-aware) du début de la période en cours
-        * 1ère MT -> kickoff_1
-        * 2ème MT -> kickoff_2
-    - live_phase_offset: minutes déjà jouées au début de cette période
-        * 1ère MT -> 0
-        * 2ème MT -> 45
-
-    Le front peut ensuite faire :
-        nowDiffMin = floor((Date.now - live_phase_start)/60s)
-        minute = live_phase_offset + nowDiffMin
-        puis afficher "45’+" etc.
-
-    Pour les statuts statiques (HT, FT...), on renvoie None/None.
-    Ça dit au front: pas d'animation.
+    Donne au front de quoi animer la minute localement.
+    - live_phase_start: timestamp ISO du début de la phase en cours
+      (kickoff_1 en 1ère MT, kickoff_2 en 2ème MT)
+    - live_phase_offset:
+        0 pour la 1ère MT
+        45 pour la 2ème MT
+    Si on ne peut pas animer (HT, FT, etc.), on renvoie None / None.
     """
     st = (getattr(m, "status", "") or "").upper()
 
@@ -81,13 +70,13 @@ def _clock_payload_for_match(m: Match):
                 "live_phase_start": m.kickoff_1.isoformat(),
                 "live_phase_offset": 0,
             }
-        # LIVE mais pas de kickoff connu -> rien
+        # LIVE mais sans kickoff connu
         return {
             "live_phase_start": None,
             "live_phase_offset": None,
         }
 
-    # HT / PAUSED / FT / FINISHED / SCHEDULED / etc => pas d'horloge qui bouge
+    # HT / FT / SCHEDULED ... => pas d'horloge animée
     return {
         "live_phase_start": None,
         "live_phase_offset": None,
@@ -96,15 +85,9 @@ def _clock_payload_for_match(m: Match):
 
 def _augment_matches_with_clock(matches, request):
     """
-    matches: iterable d'instances Match
-    -> retourne une liste de dicts (serializer.data) avec en plus :
-         - live_phase_start
-         - live_phase_offset
-
-    IMPORTANT:
-    On passe "request" dans le serializer context pour que
-    MatchSerializer / GoalSerializer / CardSerializer / LineupSerializer
-    puissent construire les URLs ABSOLUES (logos, photos).
+    Sérialise chaque match + injecte live_phase_start/live_phase_offset.
+    Important: on passe request dans le serializer context
+    pour avoir des URLs absolues.
     """
     out = []
     for m in matches:
@@ -581,13 +564,22 @@ def ajouter_match(request):
 
 @require_POST
 def modifier_match(request):
+    """
+    C'est LE point critique pour la synchro temps réel entre tous les téléphones.
+    Règle:
+      - Quand on passe LIVE pour la 1ère fois -> kickoff_1 = now et minute = 0 (sauf si minute saisie manuellement)
+      - Quand on reprend la 2ème MT ("HT"/"PAUSED" -> "LIVE"):
+            kickoff_2 = now et minute = 46 (sauf si minute manuelle envoyée)
+      - Sinon on ne touche pas aux kickoffs déjà posés.
+    Ainsi le backend garde une baseline commune et le serializer calcule la minute courante.
+    """
     mid = _post(request, "id")
     if not mid:
         return HttpResponseBadRequest("id manquant")
 
     m = get_object_or_404(Match, pk=mid)
 
-    # --- Clubs (inchangé) ---
+    # --- Clubs ---
     if "home_id" in request.POST or "team1" in request.POST or "home" in request.POST:
         c = _resolve_club(_post(request, "home_id") or _post(request, "team1") or _post(request, "home"))
         if c:
@@ -597,51 +589,47 @@ def modifier_match(request):
         if c:
             m.away_club = c
 
-    # --- Score (inchangé) ---
+    # --- Scores ---
     if "home_score" in request.POST or "score1" in request.POST:
         m.home_score = _to_int(_post(request, "home_score") or _post(request, "score1"), m.home_score)
     if "away_score" in request.POST or "score2" in request.POST:
         m.away_score = _to_int(_post(request, "away_score") or _post(request, "score2"), m.away_score)
 
-    # --- Minute manuelle (baseline forcée par l'admin) ---
+    # --- Minute manuelle depuis le formulaire "match rapide" ---
     manual_minute_was_sent = "minute" in request.POST
     if manual_minute_was_sent:
         m.minute = _to_int(_post(request, "minute"), m.minute)
 
-    # --- Round (inchangé) ---
+    # --- Round ---
     if "journee" in request.POST or "round_id" in request.POST:
         r = _resolve_round(_post(request, "journee") or _post(request, "round_id"))
         if r:
             m.round = r
 
-    # --- Status + gestion coups d'envoi ---
+    # --- Status + kickoff_1 / kickoff_2 / baseline minute ---
     if "status" in request.POST:
         new_status = (_post(request, "status") or m.status).upper()
-
         prev_status = (m.status or "").upper()
+        now = timezone.now()
 
         if new_status == "LIVE":
-            now = timezone.now()
-
-            # Si on passe LIVE depuis un statut qui n'était pas LIVE avant
-            # on initialise les bons champs serveur
+            # Cas 1 : début du match (on n'avait pas encore kickoff_1)
             if m.kickoff_1 is None:
-                # tout début du match
                 m.kickoff_1 = now
+                # si l'admin n'a PAS fourni une minute manuelle, on pose une baseline commune
                 if not manual_minute_was_sent:
-                    # baseline commune pour tous les clients
-                    m.minute = 0
+                    m.minute = 0  # tout le monde démarre à 0'
 
+            # Cas 2 : reprise après mi-temps
             elif prev_status in ["HT", "PAUSED"] and m.kickoff_2 is None:
-                # reprise 2e mi-temps
                 m.kickoff_2 = now
+                # si pas de minute forcée manuellement par l'admin, baseline = 46'
                 if not manual_minute_was_sent:
-                    # baseline commune reprise -> 46 (pas 45)
-                    m.minute = 46
+                    m.minute = 46  # tout le monde démarre en 2e MT à 46'
 
         m.status = new_status
 
-    # --- Lieu / datetime / buteur (inchangé) ---
+    # --- Autres champs ---
     if "venue" in request.POST:
         m.venue = _post(request, "venue") or ""
     if "datetime" in request.POST or "kickoff_at" in request.POST:
@@ -651,7 +639,6 @@ def modifier_match(request):
 
     m.save()
     return JsonResponse({"ok": True})
-
 
 
 @require_POST

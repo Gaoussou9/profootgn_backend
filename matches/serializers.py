@@ -526,27 +526,24 @@ class MatchSerializer(serializers.ModelSerializer):
     # minute dynamique serveur
     def get_current_minute(self, obj):
         """
-        Renvoie un ENTIER représentant la minute actuelle du match,
-        pour que le front puisse afficher:
-          - "0'"..."44'"..."45’+"..."90’+" etc.
+        Renvoie un ENTIER représentant la minute actuelle du match.
+        On fait en sorte de TOUJOURS retourner un entier stable.
 
-        Règle:
-          - HT / PAUSED     => 45
-          - FT / FINISHED   => 90
-          - LIVE 2e MT      => max(46, 45 + floor((now - kickoff_2)/60))
-          - LIVE 1ère MT    => max(0, floor((now - kickoff_1)/60))
-
-        Si on ne peut pas calculer (pas de kickoff_*), fallback sur obj.minute.
-        Sinon None.
+        Règles d'affichage foot:
+          - HT / PAUSED       => 45
+          - FT / FINISHED     => 90
+          - LIVE 2e MT        => max(46, 45 + floor((now - kickoff_2)/60)), clamp à 90
+          - LIVE 1ère MT      => max(0, floor((now - kickoff_1)/60)), clamp à 90
+          - sinon             => minute manuelle (ou 0)
         """
         status = (getattr(obj, "status", "") or "").upper()
         now = timezone.now()
 
-        # pause mi-temps
+        # Mi-temps / pause
         if status in ["HT", "PAUSED"]:
             return 45
 
-        # terminé
+        # Terminé
         if status in ["FT", "FINISHED"]:
             return 90
 
@@ -554,28 +551,39 @@ class MatchSerializer(serializers.ModelSerializer):
             kickoff_2 = getattr(obj, "kickoff_2", None)
             kickoff_1 = getattr(obj, "kickoff_1", None)
 
-            # 2e mi-temps connue ?
+            # 2e mi-temps
             if kickoff_2:
                 diff_seconds = (now - kickoff_2).total_seconds()
                 raw_minute = 45 + int(diff_seconds // 60)
-                # on ne veut jamais retourner <46 en 2e
+
                 if raw_minute < 46:
                     raw_minute = 46
+                if raw_minute > 90:
+                    raw_minute = 90
+
                 return raw_minute
 
-            # sinon 1ère mi-temps
+            # 1ère mi-temps
             if kickoff_1:
                 diff_seconds = (now - kickoff_1).total_seconds()
                 raw_minute = int(diff_seconds // 60)
+
                 if raw_minute < 0:
                     raw_minute = 0
+                if raw_minute > 90:
+                    raw_minute = 90
+
                 return raw_minute
 
-        # fallback sur minute manuelle (legacy en DB)
-        if hasattr(obj, "minute"):
+            # LIVE mais pas de kickoff_* (match créé à la main sans transition correcte)
+            # -> fallback minute manuelle ou 0
             try:
-                return int(obj.minute)
+                return int(getattr(obj, "minute", 0) or 0)
             except Exception:
-                pass
+                return 0
 
-        return None
+        # pas LIVE : fallback minute manuelle
+        try:
+            return int(getattr(obj, "minute", 0) or 0)
+        except Exception:
+            return 0
