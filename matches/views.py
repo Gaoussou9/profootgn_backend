@@ -587,7 +587,7 @@ def modifier_match(request):
 
     m = get_object_or_404(Match, pk=mid)
 
-    # Clubs
+    # --- Clubs (inchangé) ---
     if "home_id" in request.POST or "team1" in request.POST or "home" in request.POST:
         c = _resolve_club(_post(request, "home_id") or _post(request, "team1") or _post(request, "home"))
         if c:
@@ -597,37 +597,51 @@ def modifier_match(request):
         if c:
             m.away_club = c
 
-    # Scores / minute (minute reste un fallback legacy)
+    # --- Score (inchangé) ---
     if "home_score" in request.POST or "score1" in request.POST:
         m.home_score = _to_int(_post(request, "home_score") or _post(request, "score1"), m.home_score)
     if "away_score" in request.POST or "score2" in request.POST:
         m.away_score = _to_int(_post(request, "away_score") or _post(request, "score2"), m.away_score)
-    if "minute" in request.POST:
+
+    # --- Minute manuelle (baseline forcée par l'admin) ---
+    manual_minute_was_sent = "minute" in request.POST
+    if manual_minute_was_sent:
         m.minute = _to_int(_post(request, "minute"), m.minute)
 
-    # Round
+    # --- Round (inchangé) ---
     if "journee" in request.POST or "round_id" in request.POST:
         r = _resolve_round(_post(request, "journee") or _post(request, "round_id"))
         if r:
             m.round = r
 
-    # Status (et gestion des kicks off)
+    # --- Status + gestion coups d'envoi ---
     if "status" in request.POST:
         new_status = (_post(request, "status") or m.status).upper()
 
-        if new_status == "LIVE":
-            # Si on passe LIVE :
-            # 1ère MT : kickoff_1 manquant -> le définir maintenant.
-            if m.kickoff_1 is None:
-                m.kickoff_1 = timezone.now()
+        prev_status = (m.status or "").upper()
 
-            # Reprise 2ème MT : si on venait de HT/PAUSED et kickoff_2 pas encore défini -> le définir maintenant.
-            if m.status in ["HT", "PAUSED"] and m.kickoff_2 is None:
-                m.kickoff_2 = timezone.now()
+        if new_status == "LIVE":
+            now = timezone.now()
+
+            # Si on passe LIVE depuis un statut qui n'était pas LIVE avant
+            # on initialise les bons champs serveur
+            if m.kickoff_1 is None:
+                # tout début du match
+                m.kickoff_1 = now
+                if not manual_minute_was_sent:
+                    # baseline commune pour tous les clients
+                    m.minute = 0
+
+            elif prev_status in ["HT", "PAUSED"] and m.kickoff_2 is None:
+                # reprise 2e mi-temps
+                m.kickoff_2 = now
+                if not manual_minute_was_sent:
+                    # baseline commune reprise -> 46 (pas 45)
+                    m.minute = 46
 
         m.status = new_status
 
-    # Lieu / datetime / buteur
+    # --- Lieu / datetime / buteur (inchangé) ---
     if "venue" in request.POST:
         m.venue = _post(request, "venue") or ""
     if "datetime" in request.POST or "kickoff_at" in request.POST:
@@ -637,6 +651,7 @@ def modifier_match(request):
 
     m.save()
     return JsonResponse({"ok": True})
+
 
 
 @require_POST
