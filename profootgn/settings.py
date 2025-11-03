@@ -1,4 +1,4 @@
-# profootgn/settings.py
+# profootgn/settings.py (corrigé / déployable)
 from pathlib import Path
 from dotenv import load_dotenv
 import os
@@ -15,17 +15,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 DEBUG = os.getenv("DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
 
 # ALLOWED_HOSTS
-if DEBUG:
-    ALLOWED_HOSTS = ["*"]
-else:
-    # Ajout explicite des domaines courants utilisés en prod.
-    # Garde les wildcards .onrender.com et .vercel.app pour couvrir les previews.
-    _default_hosts = "profootgn-api.onrender.com,profootgn-frontend.vercel.app,kanousport.com,www.kanousport.com,.onrender.com,.vercel.app"
-    ALLOWED_HOSTS = [
-        h.strip()
-        for h in os.getenv("ALLOWED_HOSTS", _default_hosts).split(",")
-        if h.strip()
-    ] or [".onrender.com", ".vercel.app"]
+# On accepte via env (CSV) + quelques hosts utiles par défaut pour Render/Vercel et ton domaine
+_default_hosts = ".onrender.com,.vercel.app,profootgn-api.onrender.com,kanousport.com,www.kanousport.com"
+_raw_allowed = os.getenv("ALLOWED_HOSTS", _default_hosts)
+ALLOWED_HOSTS = [h.strip() for h in _raw_allowed.split(",") if h.strip()]
 
 # =========================
 # Apps
@@ -66,7 +59,7 @@ if USE_CLOUDINARY:
 # Middleware
 # =========================
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",  # ← le plus haut possible, avant CommonMiddleware
+    "corsheaders.middleware.CorsMiddleware",  # ← le plus haut possible
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -199,7 +192,10 @@ SIMPLE_JWT = {
 # =========================
 # CORS / CSRF
 # =========================
+# FRONTEND_ORIGIN (mettre https://www.kanousport.com en prod)
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+
+# EXTRA origins CSV (par ex previews vercel, autres frontends)
 EXTRA_ORIGINS = [o.strip() for o in os.getenv("BACKEND_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 if DEBUG:
@@ -210,23 +206,23 @@ if DEBUG:
     ]
     CORS_ALLOWED_ORIGIN_REGEXES = []
 else:
-    # en production, autoriser explicitement les origines frontales
+    # Production: n'autorise que des origines explicites
     CORS_ALLOW_ALL_ORIGINS = False
-    CORS_ALLOWED_ORIGINS = [
-        FRONTEND_ORIGIN,
-        "https://kanousport.com",
-        "https://www.kanousport.com",
-        "https://profootgn-frontend.vercel.app",
-        *EXTRA_ORIGINS,
-    ]
-    # autorise les previews vercel (CORS check only)
+    # On construit une liste à partir du FRONTEND_ORIGIN + EXTRA_ORIGINS
+    # et on ajoute explicitement les possibles front (kanousport) et vercel previews via regex
+    explicit_origins = [FRONTEND_ORIGIN] + EXTRA_ORIGINS
+    # aussi autoriser l'hostname du frontend vercel par défaut (optionnel)
+    explicit_origins = list(dict.fromkeys([*explicit_origins, "https://profootgn-frontend.vercel.app", "https://www.kanousport.com", "https://kanousport.com"]))
+    # garder que les valeurs commençant par http/https
+    CORS_ALLOWED_ORIGINS = [o for o in explicit_origins if o.startswith(("http://", "https://"))]
     CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\.vercel\.app$"]
 
+# Si tu utilises des cookies/session côté client
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF doit lister des origines EXPLICITES (https://domain)
 CSRF_TRUSTED_ORIGINS = [
-    o for o in ([FRONTEND_ORIGIN] + EXTRA_ORIGINS + ["https://kanousport.com","https://www.kanousport.com"])
-    if o.startswith(("http://", "https://"))
+    o for o in ([FRONTEND_ORIGIN] + EXTRA_ORIGINS + ["https://www.kanousport.com", "https://kanousport.com"]) if o.startswith(("http://", "https://"))
 ]
 
 # =========================
