@@ -18,7 +18,9 @@ DEBUG = os.getenv("DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
 if DEBUG:
     ALLOWED_HOSTS = ["*"]
 else:
-    _default_hosts = ".onrender.com,.vercel.app"
+    # Ajout explicite des domaines courants utilisés en prod.
+    # Garde les wildcards .onrender.com et .vercel.app pour couvrir les previews.
+    _default_hosts = "profootgn-api.onrender.com,profootgn-frontend.vercel.app,kanousport.com,www.kanousport.com,.onrender.com,.vercel.app"
     ALLOWED_HOSTS = [
         h.strip()
         for h in os.getenv("ALLOWED_HOSTS", _default_hosts).split(",")
@@ -197,8 +199,9 @@ SIMPLE_JWT = {
 # =========================
 # CORS / CSRF
 # =========================
-# Origine principale du frontend (prod) — ex: https://profootgn.vercel.app
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+# Origine principale du frontend (prod) — ex: https://profootgn-frontend.vercel.app
+# Par défaut on met le frontend Vercel en prod si non fourni via .env
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://profootgn-frontend.vercel.app")
 
 # Liste CSV d’origines supplémentaires explicites (préviews Vercel ou autres)
 # ex: BACKEND_ALLOWED_ORIGINS="https://feature-x-yourapp.vercel.app,https://autre.site"
@@ -216,6 +219,7 @@ if DEBUG:
 else:
     CORS_ALLOW_ALL_ORIGINS = False
     # Autorisations explicites
+    # FRONTEND_ORIGIN + toute variable d'origines supplémentaires
     CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN, *EXTRA_ORIGINS]
     # + wildcard regex pour couvrir toutes les previews *.vercel.app (CORS uniquement)
     CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\.vercel\.app$"]
@@ -224,8 +228,17 @@ else:
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF doit lister des origines EXPLICITES (pas de wildcard ici)
+# Ajout automatique des origines utiles si non présentes
+_default_csrf = [
+    FRONTEND_ORIGIN,
+    "https://kanousport.com",
+    "https://www.kanousport.com",
+    "https://profootgn-frontend.vercel.app",
+    "https://profootgn-api.onrender.com",
+]
+EXTRA_CSRF = [o.strip() for o in os.getenv("EXTRA_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 CSRF_TRUSTED_ORIGINS = [
-    o for o in ([FRONTEND_ORIGIN] + EXTRA_ORIGINS) if o.startswith(("http://", "https://"))
+    o for o in (EXTRA_CSRF + _default_csrf + EXTRA_ORIGINS) if o.startswith(("http://", "https://"))
 ]
 
 # =========================
