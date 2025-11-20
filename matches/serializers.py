@@ -61,6 +61,15 @@ def _short_name(full: str | None) -> str | None:
     return f"{first[0].upper()}. {last}"
 
 
+# petit helper générique pour extraire attributs depuis dict ou model instance
+def _get_attr(obj, name, default=None):
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
 # ---------- ROUND ----------
 class RoundSerializer(serializers.ModelSerializer):
     class Meta:
@@ -218,12 +227,14 @@ class CardSerializer(serializers.ModelSerializer):
 class LineupSerializer(serializers.ModelSerializer):
     """
     Schéma plat attendu par le front.
+    Expose `seq` (ordre/indice d'insertion) si présent.
     """
     club_name      = serializers.CharField(source="club.name", read_only=True)
     club_logo      = serializers.SerializerMethodField()
     player_display = serializers.SerializerMethodField()
     player_photo   = serializers.SerializerMethodField()
     rating         = serializers.SerializerMethodField()  # clé attendue par le front
+    seq            = serializers.SerializerMethodField()
 
     class Meta:
         model = Lineup
@@ -233,6 +244,7 @@ class LineupSerializer(serializers.ModelSerializer):
             "number", "position", "is_starting", "is_captain",
             "rating",
             "player_photo",
+            "seq",
         ]
 
     def _abs_any_local(self, request, value):
@@ -301,6 +313,26 @@ class LineupSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    def get_seq(self, obj):
+        """
+        Expose une valeur 'seq' prioritaire :
+          1) seq (si présent)
+          2) order
+          3) sort_order
+          4) None (si rien)
+        Retourne int ou None.
+        """
+        for k in ("seq", "order", "sort_order"):
+            v = _get_attr(obj, k, None)
+            if v is None:
+                continue
+            try:
+                return int(v)
+            except Exception:
+                # si conversion impossible, ignorer et continuer
+                continue
+        return None
+
 
 # ---------- LINEUPS (write serializer) ----------
 class LineupWriteSerializer(serializers.ModelSerializer):
@@ -309,12 +341,15 @@ class LineupWriteSerializer(serializers.ModelSerializer):
         write_only=True, required=False, allow_null=True, allow_blank=True
     )
 
+    # permettre l'envoi du seq depuis le front
+    seq = serializers.IntegerField(required=False, allow_null=True)
+
     class Meta:
         model = Lineup
         fields = [
             "id", "match", "club", "player", "player_name",
             "number", "position", "is_starting", "is_captain",
-            "rating", "note", "photo",
+            "rating", "note", "photo", "seq",
         ]
         extra_kwargs = {
             "match": {"required": False},
@@ -327,6 +362,7 @@ class LineupWriteSerializer(serializers.ModelSerializer):
             "is_captain": {"required": False},
             "rating": {"required": False},
             "photo": {"required": False},
+            "seq": {"required": False},
         }
 
     def _coerce_rating(self, val):
@@ -354,6 +390,16 @@ class LineupWriteSerializer(serializers.ModelSerializer):
         # minutes_played ignoré
         attrs.pop("minutes_played", None)
 
+        # seq validation: must be non-negative integer if present
+        if "seq" in attrs and attrs["seq"] is not None:
+            try:
+                s = int(attrs["seq"])
+                if s < 0:
+                    raise serializers.ValidationError({"seq": "seq must be >= 0"})
+                attrs["seq"] = s
+            except ValueError:
+                raise serializers.ValidationError({"seq": "seq must be integer"})
+
         return attrs
 
 
@@ -374,10 +420,79 @@ class TeamLineupSerializer(serializers.Serializer):
     players = serializers.SerializerMethodField()
     team_avg_rating = serializers.SerializerMethodField()
 
+    def _is_starting(self, p):
+        v = _get_attr(p, "is_starting", None)
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return int(v) == 1
+        if isinstance(v, str):
+            return v.lower() in ("1", "true", "yes", "y")
+        return False
+
+    def _num_or_large(self, p):
+        n = _get_attr(p, "number", None)
+        try:
+            return int(n)
+        except Exception:
+            return 9999
+
+    def _id_or_0(self, p):
+        idv = _get_attr(p, "id", None)
+        try:
+            return int(idv)
+        except Exception:
+            return 0
+
+    def _get_seq(self, p):
+        """
+        Récupère seq/order/sort_order depuis l'item (dict ou model).
+        Retourne int ou None.
+        """
+        for k in ("seq", "order", "sort_order"):
+            v = _get_attr(p, k, None)
+            if v is None:
+                continue
+            try:
+                return int(v)
+            except Exception:
+                continue
+        return None
+
     def get_players(self, obj):
         from .serializers import LineupSerializer
-        items = obj.get("players", [])
-        return LineupSerializer(items, many=True, context=self.context).data
+        items = obj.get("players", []) or []
+
+        # If items is a queryset, coerce to list (so we can sort)
+        # But don't trigger DB fetch if already list/dict
+        if hasattr(items, "all") and not isinstance(items, (list, tuple)):
+            items = list(items)
+
+        # Sorting strategy:
+        # - If seq exists on at least one item => sort primarily by seq (ascending).
+        # - Items with seq==None go after seq'd items and are ordered by:
+        #     is_starting (starters first), number asc, id asc
+        has_seq = any(self._get_seq(it) is not None for it in items)
+
+        def sort_key(it):
+            seq = self._get_seq(it)
+            if has_seq:
+                # Primary: seq if present else large number to push to end
+                primary = seq if seq is not None else 9999
+                # Secondary: starters first (0 for starter, 1 otherwise)
+                secondary = 0 if self._is_starting(it) else 1
+                tertiary = self._num_or_large(it)
+                quaternary = self._id_or_0(it)
+                return (primary, secondary, tertiary, quaternary)
+            else:
+                # no seq anywhere: fallback older ordering: starters first, number, id
+                primary = 0 if self._is_starting(it) else 1
+                secondary = self._num_or_large(it)
+                tertiary = self._id_or_0(it)
+                return (primary, secondary, tertiary)
+
+        items_sorted = sorted(items, key=sort_key)
+        return LineupSerializer(items_sorted, many=True, context=self.context).data
 
     def get_team_avg_rating(self, obj):
         raw_players = obj.get("players", []) or []

@@ -11,7 +11,7 @@ POSITIONS = [
 
 class Player(models.Model):
     first_name  = models.CharField(max_length=80)
-    last_name   = models.CharField(max_length=80, blank=True)  # certains joueurs n'ont pas toujours de nom saisi
+    last_name   = models.CharField(max_length=80, blank=True)  
     club        = models.ForeignKey(
         Club,
         on_delete=models.SET_NULL,
@@ -20,9 +20,7 @@ class Player(models.Model):
         db_index=True,
     )
     number      = models.PositiveIntegerField(default=0)
-    # Si tu veux autoriser texte libre: laisse sans choices
-    # Si tu préfères limiter aux 4 rôles ci-dessus, ajoute choices=POSITIONS
-    position    = models.CharField(max_length=64, blank=True, null=True)  # choices=POSITIONS,
+    position    = models.CharField(max_length=64, blank=True, null=True)
     nationality = models.CharField(max_length=60, blank=True)
     birthdate   = models.DateField(null=True, blank=True)
 
@@ -40,12 +38,8 @@ class Player(models.Model):
             models.Index(fields=["club", "last_name", "first_name"]),
             models.Index(fields=["position"]),
         ]
-        # Si tu veux interdire deux joueurs avec le même numéro dans le même club, décommente:
-        # constraints = [
-        #     models.UniqueConstraint(fields=["club", "number"], name="uniq_jersey_per_club"),
-        # ]
 
     def __str__(self):
-        # gère le cas où last_name est vide
+        
         full = f"{self.first_name} {self.last_name or ''}".strip()
         return full

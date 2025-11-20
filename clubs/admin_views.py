@@ -1,5 +1,3 @@
-# clubs/admin_views.py
-
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.http import JsonResponse
@@ -57,7 +55,7 @@ def quick_roster(request, club_id):
             first_name = (request.POST.get("first_name") or "").strip()
             last_name  = (request.POST.get("last_name") or "").strip()
             position   = (request.POST.get("position") or "").strip()
-            number_raw = request.POST.get("number") or ""
+            number_raw = (request.POST.get("number") or "").strip()
             photo      = request.FILES.get("photo")
 
             if not first_name and not last_name:
@@ -65,17 +63,23 @@ def quick_roster(request, club_id):
                 return redirect("quick_roster", club_id=club.id)
 
             player = Player(club=club, first_name=first_name, last_name=last_name)
-            if hasattr(player, "position"): player.position = position
+            if hasattr(player, "position"):
+                player.position = position or None
             if hasattr(player, "number"):
                 try:
                     player.number = int(number_raw) if number_raw != "" else None
                 except Exception:
                     player.number = None
-            if photo and hasattr(player, "photo"): player.photo = photo
-            player.save()
+            if photo and hasattr(player, "photo"):
+                player.photo = photo
 
-            display_name = (first_name + " " + last_name).strip()
-            messages.success(request, f"Joueur « {display_name} » ajouté à {club.name}.")
+            try:
+                player.full_clean()
+                player.save()
+                display_name = (first_name + " " + last_name).strip()
+                messages.success(request, f"Joueur « {display_name} » ajouté à {club.name}.")
+            except Exception as e:
+                messages.error(request, f"Impossible d'ajouter le joueur : {e}")
             return redirect("quick_roster", club_id=club.id)
 
         if action == "edit_player":
@@ -84,7 +88,8 @@ def quick_roster(request, club_id):
 
             player.first_name = (request.POST.get("first_name") or "").strip()
             player.last_name  = (request.POST.get("last_name") or "").strip()
-            if hasattr(player, "position"): player.position = (request.POST.get("position") or "").strip()
+            if hasattr(player, "position"):
+                player.position = (request.POST.get("position") or "").strip() or None
 
             if hasattr(player, "number"):
                 number_raw = request.POST.get("number")
@@ -97,8 +102,12 @@ def quick_roster(request, club_id):
             if new_photo and hasattr(player, "photo"):
                 player.photo = new_photo
 
-            player.save()
-            messages.success(request, f"Joueur « {player.first_name} {player.last_name} » modifié.")
+            try:
+                player.full_clean()
+                player.save()
+                messages.success(request, f"Joueur « {player.first_name} {player.last_name} » modifié.")
+            except Exception as e:
+                messages.error(request, f"Modification impossible : {e}")
             return redirect("quick_roster", club_id=club.id)
 
         if action == "toggle_player_active":

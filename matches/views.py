@@ -1,7 +1,8 @@
+# views.py - version complète modifiée pour garantir un ordre stable des lineups (champ `seq`)
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch, Q, Max
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
@@ -117,9 +118,10 @@ class MatchViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs_goals = Goal.objects.select_related("player", "club").order_by("minute", "id")
         qs_cards = Card.objects.select_related("player", "club").order_by("minute", "id")
+        # prefer seq ordering when available (seq nullable)
         qs_lineups = (
             Lineup.objects.select_related("player", "club")
-            .order_by("club_id", "-is_starting", "number", "id")
+            .order_by("club_id", "-is_starting", "seq", "number", "id")
         )
 
         qs = (
@@ -235,7 +237,7 @@ class MatchViewSet(viewsets.ModelViewSet):
         qs = (
             Lineup.objects.filter(match_id=pk)
             .select_related("club", "player")
-            .order_by("club_id", "-is_starting", "number", "id")
+            .order_by("club_id", "-is_starting", "seq", "number", "id")
         )
         data = LineupSerializer(qs, many=True, context={"request": request}).data
         return Response(data)
@@ -444,8 +446,47 @@ class LineupViewSet(
         "player__first_name",
         "player__last_name",
     ]
-    ordering_fields = ["match", "club", "is_starting", "number", "id"]
-    ordering = ["match", "club", "-is_starting", "number", "id"]
+    ordering_fields = ["match", "club", "is_starting", "number", "id", "seq"]
+    ordering = ["match", "club", "-is_starting", "seq", "number", "id"]
+
+    def create(self, request, *args, **kwargs):
+        """
+        If 'seq' not provided by the client, auto-assign seq = max(seq)+1
+        within the same match + club. This keeps the insertion order stable.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        match = validated.get("match") or None
+        club = validated.get("club") or None
+
+        seq_provided = "seq" in validated and validated.get("seq") is not None
+
+        with transaction.atomic():
+            if not seq_provided and match and club:
+                agg = Lineup.objects.filter(match=match, club=club).aggregate(max_seq=Max("seq"))
+                max_seq = agg.get("max_seq") or 0
+                new_seq = int(max_seq) + 1
+                instance = serializer.save(seq=new_seq)
+            else:
+                instance = serializer.save()
+
+        headers = self.get_success_headers(serializer.data)
+        out = LineupSerializer(instance, context={"request": request}).data
+        return Response(out, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """
+        Allow updating seq when provided. Otherwise behave normally.
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            inst = serializer.save()
+        return Response(LineupSerializer(inst, context={"request": request}).data)
 
 
 @api_view(["GET"])
@@ -454,7 +495,7 @@ def match_lineups(request, pk: int):
     qs = (
         Lineup.objects.filter(match_id=pk)
         .select_related("club", "player")
-        .order_by("club_id", "-is_starting", "number", "id")
+        .order_by("club_id", "-is_starting", "seq", "number", "id")
     )
     data = LineupSerializer(qs, many=True, context={"request": request}).data
     return Response(data)

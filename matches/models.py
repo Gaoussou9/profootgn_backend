@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import Max
 
 from clubs.models import Club
 from players.models import Player
@@ -246,6 +247,7 @@ class Lineup(models.Model):
     Une ligne = un joueur (ou un nom libre) pour ce match/club.
     Champs pensés pour correspondre au front + serializers.
     """
+
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="lineups")
     club = models.ForeignKey(Club, on_delete=models.CASCADE)
 
@@ -258,6 +260,11 @@ class Lineup(models.Model):
     position = models.CharField(max_length=8, blank=True, default="")  # GK/CB/DM/AM/RW/LW/ST...
     is_starting = models.BooleanField(default=True)          # titulaire ?
     is_captain = models.BooleanField(default=False)
+
+    # Champ ajouté : séquence d'entrée (conserve l'ordre d'ajout / admin)
+    # - null=True pour faciliter migration (tu rempliras via migration ou backfill)
+    # - on calcule automatiquement seq si absent lors du save()
+    seq = models.PositiveIntegerField(null=True, blank=True, db_index=True)
 
     # Champ conservé mais non bloquant (ignoré par les validations)
     minutes_played = models.PositiveIntegerField(
@@ -279,11 +286,16 @@ class Lineup(models.Model):
     photo = models.URLField(max_length=300, blank=True, default="")
 
     class Meta:
-        # Tri stable attendu par le front : club -> titulaires -> numéro -> id
-        ordering = ["club_id", "-is_starting", "number", "id"]
+        # Tri stable attendu par le front :
+        # - on conserve groupement par match/club
+        # - on met les titulaires avant les remplaçants
+        # - puis on respecte la séquence d'entrée (seq) si fournie
+        # - fallback sur number puis id
+        ordering = ["match", "club", "-is_starting", "seq", "number", "id"]
         indexes = [
             models.Index(fields=["match", "club"]),
             models.Index(fields=["match", "club", "is_starting"]),
+            models.Index(fields=["match", "club", "seq"]),
         ]
 
     def clean(self):
@@ -295,6 +307,24 @@ class Lineup(models.Model):
             if not (1.0 <= r <= 10.0):
                 raise ValidationError("Le rating doit être entre 1.0 et 10.0.")
 
+    def save(self, *args, **kwargs):
+        """
+        Si seq n'est pas renseigné à la création, on lui donne une valeur
+        max(seq) + 1 pour (match, club). Ainsi l'ordre d'ajout est conservé.
+        """
+        # Only try to set seq when match and club are known and seq is None
+        if self.seq is None and self.match_id and self.club_id:
+            try:
+                agg = Lineup.objects.filter(match_id=self.match_id, club_id=self.club_id).aggregate(Max("seq"))
+                max_seq = agg.get("seq__max") or 0
+                # ensure seq is at least 1
+                self.seq = (max_seq or 0) + 1
+            except Exception:
+                # en cas d'erreur (par ex. during initial migrations), on ignore et on laisse seq None
+                pass
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
         name = (
             self.player_name
@@ -302,4 +332,4 @@ class Lineup(models.Model):
             or f"#{self.number or '?'}"
         )
         tag = "XI" if self.is_starting else "SUB"
-        return f"{self.match_id}:{self.club_id} {tag} {name}"
+        return f"{self.match_id}:{self.club_id} {tag} {name} (seq={self.seq})"
