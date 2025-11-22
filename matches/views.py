@@ -121,7 +121,7 @@ class MatchViewSet(viewsets.ModelViewSet):
         # prefer seq ordering when available (seq nullable)
         qs_lineups = (
             Lineup.objects.select_related("player", "club")
-            .order_by("club_id", "-is_starting", "seq", "number", "id")
+            .order_by("club_id", "-is_starting", "seq", "id")
         )
 
         qs = (
@@ -237,7 +237,7 @@ class MatchViewSet(viewsets.ModelViewSet):
         qs = (
             Lineup.objects.filter(match_id=pk)
             .select_related("club", "player")
-            .order_by("club_id", "-is_starting", "seq", "number", "id")
+            .order_by("club_id", "-is_starting", "seq", "id")
         )
         data = LineupSerializer(qs, many=True, context={"request": request}).data
         return Response(data)
@@ -368,7 +368,7 @@ class MatchViewSet(viewsets.ModelViewSet):
         qs = (
             Lineup.objects.filter(match=match)
             .select_related("club", "player")
-            .order_by("club_id", "-is_starting", "seq", "number", "id")
+            .order_by("club_id", "-is_starting", "seq", "id")
         )
         data = LineupSerializer(qs, many=True, context={"request": request}).data
         return Response({"ok": True, "lineups": data}, status=200)
@@ -546,7 +546,7 @@ class LineupViewSet(
         "player__last_name",
     ]
     ordering_fields = ["match", "club", "is_starting", "number", "id", "seq"]
-    ordering = ["match", "club", "-is_starting", "seq", "number", "id"]
+    ordering = ["match", "club", "-is_starting", "seq", "id"]
 
     def create(self, request, *args, **kwargs):
         """
