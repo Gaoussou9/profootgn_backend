@@ -273,6 +273,105 @@ class MatchViewSet(viewsets.ModelViewSet):
             ti.save()
             out[side] = TeamInfoSerializer(ti).data
         return Response(out, status=status.HTTP_200_OK)
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="admin/lineups/replace",
+        permission_classes=[IsAdminUser],
+    )
+    def action_replace_lineups(self, request, pk=None):
+        """
+        Replace the lineups for a match (admin bulk replace).
+        Expected payload:
+          - Either a flat list: [ {player, club, is_starting, number, position, seq?}, ... ]
+          - Or an object: { home: { xi: [...], bench: [...] }, away: { xi: [...], bench: [...] } }
+        Rules:
+          - If incoming items contain 'seq', we keep it.
+          - If seq missing, we assign seq based on the incoming order (0..n-1) to preserve insertion order.
+          - Operation performed inside transaction: delete existing lineups for match -> bulk_create new ones.
+        """
+        match = get_object_or_404(Match, pk=pk)
+
+        payload = request.data or {}
+        # normalize into a flat list preserving intended order
+        def _flatten(x):
+            if isinstance(x, list):
+                return x
+            if not x or not isinstance(x, dict):
+                return []
+            out = []
+            # common admin shape: { home: { xi: [], bench: [] }, away: { ... } }
+            for side in ("home", "away"):
+                block = x.get(side) or {}
+                if isinstance(block, dict):
+                    xi = block.get("xi") or block.get("home_xi") or block.get("players") or block.get("xi_list") or []
+                    bench = block.get("bench") or block.get("subs") or block.get("bench_list") or []
+                    if isinstance(xi, list):
+                        out.extend(xi)
+                    if isinstance(bench, list):
+                        out.extend(bench)
+            # fallback: collect any list values in insertion order
+            if not out:
+                for v in x.values():
+                    if isinstance(v, list):
+                        out.extend(v)
+            return out
+
+        items = _flatten(payload)
+        # final fallback: if payload itself looks like nested map with arrays per key, flatten preserving keys order
+        if not items and isinstance(payload, dict):
+            # try simple flatten by iterating values
+            items = []
+            for v in payload.values():
+                if isinstance(v, list):
+                    items.extend(v)
+
+        if not isinstance(items, list):
+            return Response({"ok": False, "detail": "Payload must be list or object containing arrays"}, status=400)
+
+        # assign seq if missing, respecting the incoming order
+        for idx, it in enumerate(items):
+            if not isinstance(it, dict):
+                continue
+            if it.get("seq", None) is None:
+                it["seq"] = idx
+
+            # ensure match is set and club coercion attempted
+            it["match"] = match.id
+            if "club" in it and it["club"] is not None:
+                try:
+                    it["club"] = int(it["club"])
+                except Exception:
+                    # leave as-is (serializer will validate)
+                    pass
+
+        # validate & prepare instances
+        to_create = []
+        serializers_ok = []
+        for it in items:
+            ser = LineupWriteSerializer(data=it)
+            ser.is_valid(raise_exception=True)
+            serializers_ok.append(ser)
+            # instantiate model instance using validated_data
+            validated = ser.validated_data.copy()
+            # ensure optional fields exist
+            validated.setdefault("match", match)
+            # if club provided as id, convert to model if desired, but Lineup model FK accepts id so it's okay
+            to_create.append(Lineup(**validated))
+
+        # persist in transaction: delete existing for this match then bulk_create
+        with transaction.atomic():
+            Lineup.objects.filter(match=match).delete()
+            if to_create:
+                Lineup.objects.bulk_create(to_create)
+
+        qs = (
+            Lineup.objects.filter(match=match)
+            .select_related("club", "player")
+            .order_by("club_id", "-is_starting", "seq", "number", "id")
+        )
+        data = LineupSerializer(qs, many=True, context={"request": request}).data
+        return Response({"ok": True, "lineups": data}, status=200)
 
 
 class GoalViewSet(viewsets.ModelViewSet):
