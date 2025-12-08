@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "news",
     "recruitment",
     "users",
+    "ads",
 ]
 
 # Cloudinary apps si disponible
@@ -203,6 +204,7 @@ if DEBUG:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://kanousport.com",
     ]
     CORS_ALLOWED_ORIGIN_REGEXES = []
 else:

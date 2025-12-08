@@ -164,6 +164,9 @@ urlpatterns = [
     path("api/", include("news.urls")),
     path("api/", include("recruitment.urls")),
     path("api/", include("users.urls")),
+    path("api/ads/", include("ads.urls")),
+    
+
 ]
 
 # Fichiers média
