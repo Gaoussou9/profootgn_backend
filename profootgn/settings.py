@@ -1,5 +1,9 @@
 # profootgn/settings.py (corrigé / déployable)
 from pathlib import Path
+import pymysql
+pymysql.install_as_MySQLdb()
+
+from pathlib import Path
 from dotenv import load_dotenv
 import os
 from datetime import timedelta
@@ -42,6 +46,7 @@ INSTALLED_APPS = [
 
     # locaux
     "clubs",
+    "competitions",
     "players",
     "matches",
     "stats",
@@ -95,6 +100,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "profootgn.wsgi.application"
 
 # =========================
+## =========================
 # Database
 # =========================
 if os.getenv("DATABASE_URL"):
@@ -117,6 +123,7 @@ else:
             "OPTIONS": {"charset": "utf8mb4"},
         }
     }
+
 
 # =========================
 # Auth / Locale
@@ -251,39 +258,83 @@ JAZZMIN_SETTINGS = {
     "site_brand": "Administration de Django",
     "welcome_sign": "Tableau de bord",
     "copyright": "LiveFootGn",
+
+    # ==========================
+    # TOP NAVBAR (HEADER)
+    # ==========================
     "topmenu_links": [
         {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
+
         {"app": "players"},
         {"app": "clubs"},
         {"app": "matches"},
         {"app": "recruitment"},
         {"app": "users"},
-        {"name": "Espace Admin LiveFootGn", "url": "admin_livefootgn"},
+
+        # ✅ NOUVEAU BOUTON COMPÉTITIONS
+        {
+            "name": "Compétitions",
+            "url": "admin:competitions_competition_changelist",
+            "permissions": ["competitions.view_competition"],
+        },
+
+        {"name": "Espace Admin KanouSport", "url": "admin_livefootgn"},
     ],
+
+    # ==========================
+    # ORDRE DES APPS
+    # ==========================
     "order_with_respect_to": [
-        "auth", "players", "clubs", "matches", "stats", "news", "recruitment", "users"
+        "auth",
+        "players",
+        "clubs",
+        "competitions",   # ✅ AJOUTÉ
+        "matches",
+        "stats",
+        "news",
+        "recruitment",
+        "users",
     ],
+
+    # ==========================
+    # ICONES
+    # ==========================
     "icons": {
         "auth": "fas fa-shield-alt",
         "auth.Group": "fas fa-users-cog",
         "auth.User": "fas fa-user",
+
         "players": "fas fa-user-friends",
         "players.Player": "fas fa-user",
+
         "clubs": "fas fa-flag",
         "clubs.Club": "fas fa-shield",
+
+        "competitions": "fas fa-trophy",                 # ✅ AJOUTÉ
+        "competitions.Competition": "fas fa-trophy",     # ✅ AJOUTÉ
+        "competitions.CompetitionTeam": "fas fa-users",  # ✅ AJOUTÉ
+        "competitions.CompetitionMatch": "fas fa-futbol",# ✅ AJOUTÉ
+
         "matches": "fas fa-futbol",
         "matches.Match": "fas fa-calendar-check",
         "matches.Goal": "fas fa-futbol",
         "matches.Card": "fas fa-square",
         "matches.Round": "fas fa-layer-group",
+
         "stats": "fas fa-chart-line",
         "news": "fas fa-newspaper",
+
         "recruitment": "fas fa-briefcase",
         "recruitment.Recruiter": "fas fa-user-tie",
         "recruitment.TrialRequest": "fas fa-clipboard-check",
+
         "users": "fas fa-id-badge",
         "users.Profile": "fas fa-id-card",
     },
+
+    # ==========================
+    # OPTIONS UI
+    # ==========================
     "show_ui_builder": False,
     "changeform_format": "horizontal_tabs",
     "related_modal_active": True,

@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.views.static import serve  # pour exposer /media/ en prod
 from django.db import connection       # debug DB
+
 import os
 
 # ===== Admin rapides (matches / events / lineups) =====
@@ -116,6 +117,8 @@ def debug_cloudinary_upload(request):
 
 urlpatterns = [
     path("", root_ping, name="root"),
+    path("", include("competitions.urls")),
+    path("api/", include("competitions.urls")), 
 
     # ✅ Health check simple pour Render et monitoring
     path("api/health/", lambda r: JsonResponse({"status": "ok"})),
@@ -165,7 +168,7 @@ urlpatterns = [
     path("api/", include("recruitment.urls")),
     path("api/", include("users.urls")),
     path("api/ads/", include("ads.urls")),
-    
+    path("admin/competitions/", include("competitions.urls")),
 
 ]
 

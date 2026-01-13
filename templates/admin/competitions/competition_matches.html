@@ -1,0 +1,206 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+.admin-wrap {
+  max-width: 1100px;
+  margin: auto;
+  padding: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  margin-bottom: 24px;
+}
+
+.grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+.grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+
+label { font-weight:600; margin-bottom:6px; display:block; }
+input, select { width:100%; padding:10px; }
+
+.actions {
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:16px;
+}
+
+.actions button {
+  padding:10px 14px;
+  border-radius:6px;
+  font-weight:600;
+  border:none;
+  cursor:pointer;
+}
+
+.btn-add { background:#2c3e50; color:white; }
+.btn-start { background:#2ecc71; color:white; }
+.btn-pause { background:#f1c40f; }
+.btn-end { background:#27ae60; color:white; }
+.btn-edit { background:#9b59b6; color:white; }
+.btn-cancel { background:#e67e22; }
+.btn-delete { background:#e74c3c; color:white; }
+
+.table {
+  width:100%;
+  border-collapse:collapse;
+}
+
+.table th, .table td {
+  padding:10px;
+  border-bottom:1px solid #ddd;
+}
+
+.table tr.clickable {
+  cursor:pointer;
+}
+
+.table tr.clickable:hover {
+  background:#f4f6f8;
+}
+</style>
+
+<div class="admin-wrap">
+
+<h1>Espace Admin — {{ competition.name }}</h1>
+
+<!-- ================= FORMULAIRE ================= -->
+<div class="card">
+  <h2>Ajouter / modifier un match</h2>
+
+  <form method="post" id="matchForm">
+    {% csrf_token %}
+    <input type="hidden" name="match_id" id="match_id">
+
+    <div class="grid">
+      <div>
+        <label>Équipe 1</label>
+        <select name="home_team" id="home_team">
+          <option value="">Choisir…</option>
+          {% for t in teams %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Équipe 2</label>
+        <select name="away_team" id="away_team">
+          <option value="">Choisir…</option>
+          {% for t in teams %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="grid-4">
+      <div>
+        <label>Score équipe 1</label>
+        <input type="number" name="home_score" id="home_score" value="0">
+      </div>
+
+      <div>
+        <label>Score équipe 2</label>
+        <input type="number" name="away_score" id="away_score" value="0">
+      </div>
+
+      <div>
+        <label>Minute</label>
+        <input type="number" name="minute" id="minute" value="0">
+      </div>
+
+      <div>
+        <label>Journée</label>
+        <select name="matchday" id="matchday">
+          {% for d in matchdays %}
+            <option value="{{ d }}">J{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <label>Date</label>
+      <input type="datetime-local" name="datetime" id="datetime">
+    </div>
+
+    <div class="actions">
+      <button name="action" value="add_match" class="btn-add">Ajouter le match</button>
+      <button name="action" value="start" class="btn-start">Démarrer</button>
+      <button name="action" value="pause" class="btn-pause">Pause (HT)</button>
+      <button name="action" value="finish" class="btn-end">Fin</button>
+      <button name="action" value="update_score" class="btn-edit">Modifier / Edit</button>
+      <button name="action" value="postponed" class="btn-cancel">Suspendre</button>
+      <button name="action" value="scheduled">Prévu</button>
+      <button name="action" value="delete" class="btn-delete"
+              onclick="return confirm('Supprimer ce match ?')">
+        Supprimer
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- ================= LISTE MATCHS ================= -->
+<div class="card">
+  <h2>Matchs de la compétition</h2>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>J</th>
+        <th>Match</th>
+        <th>Score</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in matches %}
+      <tr class="clickable"
+          data-id="{{ m.id }}"
+          data-home="{{ m.home_team.id }}"
+          data-away="{{ m.away_team.id }}"
+          data-hs="{{ m.home_score }}"
+          data-as="{{ m.away_score }}"
+          data-day="{{ m.matchday }}"
+          data-datetime="{{ m.datetime|date:'Y-m-d\\TH:i' }}"
+      >
+        <td>{{ m.datetime|date:"d/m/Y H:i" }}</td>
+        <td>J{{ m.matchday }}</td>
+        <td>{{ m.home_team.name }} vs {{ m.away_team.name }}</td>
+        <td>{{ m.home_score }} - {{ m.away_score }}</td>
+        <td>{{ m.get_status_display }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">Aucun match</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+</div>
+
+<!-- ================= JS ================= -->
+<script>
+document.querySelectorAll("tr.clickable").forEach(row => {
+  row.addEventListener("click", () => {
+    document.getElementById("match_id").value = row.dataset.id;
+    document.getElementById("home_team").value = row.dataset.home;
+    document.getElementById("away_team").value = row.dataset.away;
+    document.getElementById("home_score").value = row.dataset.hs;
+    document.getElementById("away_score").value = row.dataset.as;
+    document.getElementById("matchday").value = row.dataset.day;
+    document.getElementById("datetime").value = row.dataset.datetime;
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+});
+</script>
+
+{% endblock %}

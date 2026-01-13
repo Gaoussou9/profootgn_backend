@@ -1,0 +1,111 @@
+from competitions.models import (
+    Competition,
+    CompetitionMatch,
+    CompetitionTeam,
+    CompetitionPenalty,
+)
+
+
+def calculate_competition_standings(competition: Competition):
+    standings = {}
+
+    teams = CompetitionTeam.objects.filter(
+        competition=competition,
+        is_active=True
+    )
+
+    # Initialisation
+    for team in teams:
+        standings[team.id] = {
+            "team": team,
+            "played": 0,
+            "wins": 0,
+            "draws": 0,
+            "losses": 0,
+            "goals_for": 0,
+            "goals_against": 0,
+            "points": 0,
+            "penalty_points": 0,
+        }
+
+    # Matchs pris en compte (LIVE inclus)
+    matches = CompetitionMatch.objects.filter(
+        competition=competition,
+        status__in=["FT", "LIVE", "HT"]
+    ).select_related("home_team", "away_team")
+
+    for match in matches:
+        home = match.home_team
+        away = match.away_team
+
+        if home.id not in standings or away.id not in standings:
+            continue
+
+        hs = match.home_score
+        as_ = match.away_score
+
+        standings[home.id]["played"] += 1
+        standings[away.id]["played"] += 1
+
+        standings[home.id]["goals_for"] += hs
+        standings[home.id]["goals_against"] += as_
+
+        standings[away.id]["goals_for"] += as_
+        standings[away.id]["goals_against"] += hs
+
+        if hs > as_:
+            standings[home.id]["wins"] += 1
+            standings[home.id]["points"] += 3
+            standings[away.id]["losses"] += 1
+
+        elif hs < as_:
+            standings[away.id]["wins"] += 1
+            standings[away.id]["points"] += 3
+            standings[home.id]["losses"] += 1
+
+        else:
+            standings[home.id]["draws"] += 1
+            standings[away.id]["draws"] += 1
+            standings[home.id]["points"] += 1
+            standings[away.id]["points"] += 1
+
+    # 🔴 APPLICATION DES PÉNALITÉS (CORRECT)
+    penalties = CompetitionPenalty.objects.filter(
+        competition=competition
+    )
+
+    for p in penalties:
+        if p.team_id in standings:
+            standings[p.team_id]["penalty_points"] += abs(p.points)
+            standings[p.team_id]["points"] += p.points  # points peut être négatif
+
+    # Format final
+    table = []
+
+    for data in standings.values():
+        gf = data["goals_for"]
+        ga = data["goals_against"]
+
+        table.append({
+            "team": data["team"],
+            "played": data["played"],
+            "wins": data["wins"],
+            "draws": data["draws"],
+            "losses": data["losses"],
+            "goals_for": gf,
+            "goals_against": ga,
+            "goal_difference": gf - ga,
+            "points": data["points"],
+            "penalty_points": data["penalty_points"],
+        })
+
+    table.sort(
+        key=lambda x: (
+            x["points"],
+            x["goal_difference"],
+            x["goals_for"],
+        ),
+        reverse=True
+    )
+
+    return table
