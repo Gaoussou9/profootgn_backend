@@ -70,7 +70,7 @@ def competition_matches_api(request, competition_id):
 
 
 # =====================================================
-# CLASSEMENT D’UNE COMPÉTITION
+# CLASSEMENT D’UNE COMPÉTITION (AVEC FORME LIVE)
 # =====================================================
 
 @api_view(["GET"])
@@ -83,13 +83,13 @@ def competition_standings_api(request, competition_id):
 
     table = calculate_competition_standings(competition)
 
-    data = []
+    standings = []
     position = 1
 
     for row in table:
         team = row["team"]
 
-        data.append({
+        standings.append({
             "position": position,
             "team": {
                 "id": team.id,
@@ -108,6 +108,9 @@ def competition_standings_api(request, competition_id):
             "goal_difference": row["goal_difference"],
             "points": row["points"],
             "penalty_points": row["penalty_points"],
+
+            # 🔥 FORME RÉELLE (V / N / D)
+            "form": row.get("form", []),
         })
 
         position += 1
@@ -118,5 +121,5 @@ def competition_standings_api(request, competition_id):
             "name": competition.name,
             "season": competition.season,
         },
-        "standings": data
+        "standings": standings
     })

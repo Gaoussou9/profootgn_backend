@@ -2,9 +2,11 @@ from competitions.models import (
     Competition,
     CompetitionMatch,
     CompetitionTeam,
-    CompetitionPenalty,
 )
 
+# =====================================================
+# CALCUL DU CLASSEMENT D’UNE COMPÉTITION
+# =====================================================
 
 def calculate_competition_standings(competition: Competition):
     standings = {}
@@ -14,7 +16,9 @@ def calculate_competition_standings(competition: Competition):
         is_active=True
     )
 
-    # Initialisation
+    # =========================
+    # INIT
+    # =========================
     for team in teams:
         standings[team.id] = {
             "team": team,
@@ -26,42 +30,57 @@ def calculate_competition_standings(competition: Competition):
             "goals_against": 0,
             "points": 0,
             "penalty_points": 0,
+            "form": [],  # 🔥 AJOUT
         }
 
-    # Matchs pris en compte (LIVE inclus)
-    matches = CompetitionMatch.objects.filter(
-        competition=competition,
-        status__in=["FT", "LIVE", "HT"]
-    ).select_related("home_team", "away_team")
+    # =========================
+    # MATCHS PRIS EN COMPTE
+    # =========================
+    matches = (
+        CompetitionMatch.objects
+        .filter(
+            competition=competition,
+            status__in=["FT", "LIVE", "HT"]
+        )
+        .select_related("home_team", "away_team")
+        .order_by("datetime")
+    )
 
+    # =========================
+    # CALCUL STATS + FORME
+    # =========================
     for match in matches:
         home = match.home_team
         away = match.away_team
-
-        if home.id not in standings or away.id not in standings:
-            continue
-
         hs = match.home_score
         as_ = match.away_score
 
+        # joués
         standings[home.id]["played"] += 1
         standings[away.id]["played"] += 1
 
+        # buts
         standings[home.id]["goals_for"] += hs
         standings[home.id]["goals_against"] += as_
-
         standings[away.id]["goals_for"] += as_
         standings[away.id]["goals_against"] += hs
 
+        # résultat
         if hs > as_:
             standings[home.id]["wins"] += 1
             standings[home.id]["points"] += 3
             standings[away.id]["losses"] += 1
 
+            standings[home.id]["form"].append("V")
+            standings[away.id]["form"].append("D")
+
         elif hs < as_:
             standings[away.id]["wins"] += 1
             standings[away.id]["points"] += 3
             standings[home.id]["losses"] += 1
+
+            standings[away.id]["form"].append("V")
+            standings[home.id]["form"].append("D")
 
         else:
             standings[home.id]["draws"] += 1
@@ -69,17 +88,18 @@ def calculate_competition_standings(competition: Competition):
             standings[home.id]["points"] += 1
             standings[away.id]["points"] += 1
 
-    # 🔴 APPLICATION DES PÉNALITÉS (CORRECT)
-    penalties = CompetitionPenalty.objects.filter(
-        competition=competition
-    )
+            standings[home.id]["form"].append("N")
+            standings[away.id]["form"].append("N")
 
-    for p in penalties:
-        if p.team_id in standings:
-            standings[p.team_id]["penalty_points"] += abs(p.points)
-            standings[p.team_id]["points"] += p.points  # points peut être négatif
+    # =========================
+    # LIMITER FORME À 5 MATCHS
+    # =========================
+    for team_id in standings:
+        standings[team_id]["form"] = standings[team_id]["form"][-5:]
 
-    # Format final
+    # =========================
+    # FORMAT FINAL
+    # =========================
     table = []
 
     for data in standings.values():
@@ -97,6 +117,7 @@ def calculate_competition_standings(competition: Competition):
             "goal_difference": gf - ga,
             "points": data["points"],
             "penalty_points": data["penalty_points"],
+            "form": data["form"],  # 🔥 RENVOYÉ À REACT
         })
 
     table.sort(
