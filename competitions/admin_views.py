@@ -3,7 +3,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.utils.dateparse import parse_datetime
 
-from .models import Competition, CompetitionClub
+from .models import Competition, CompetitionTeam
 from matches.models import Match, Round
 from clubs.models import Club
 
@@ -132,4 +132,37 @@ def competition_matches_view(request, competition_id):
         request,
         "admin/competitions/competition_matches.html",
         context
+    )
+
+ # =====================================================
+    # CLUBS + JOUEURS
+    # =====================================================
+def admin_competition_clubs(request, competition_id):
+    competition = get_object_or_404(Competition, id=competition_id)
+
+    clubs = (
+        CompetitionTeam.objects
+        .filter(competition=competition, is_active=True)
+        .select_related("club")
+    )
+
+    # ➕ ajout joueur
+    if request.method == "POST" and request.POST.get("action") == "add_player":
+        club_id = request.POST.get("club_id")
+        Player.objects.create(
+            club_id=club_id,
+            first_name=request.POST.get("first_name"),
+            last_name=request.POST.get("last_name"),
+            number=request.POST.get("number") or None,
+            position=request.POST.get("position", ""),
+        )
+        return redirect(request.path)
+
+    return render(
+        request,
+        "admin/competition_clubs.html",
+        {
+            "competition": competition,
+            "clubs": clubs,
+        },
     )

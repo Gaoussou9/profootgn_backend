@@ -41,46 +41,39 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
             "status",
             "status_label",
         ]
-        read_only_fields = [
-            "id",
-            "matchday",
-            "datetime",
-            "home_team",
-            "away_team",
-            "home_score",
-            "away_score",
-            "status",
-            "status_label",
-        ]
+
 
     # =========================
-    # TEAMS
+    # TEAMS (FORMAT STABLE FRONT)
     # =========================
     def get_home_team(self, obj):
-        team = obj.home_team
-        if not team:
-            return None
-
-        return {
-            "id": team.id,
-            "name": team.name,
-            "logo": self._get_logo_url(team),
-        }
+        return self._serialize_team(obj.home_team)
 
     def get_away_team(self, obj):
-        team = obj.away_team
-        if not team:
-            return None
+        return self._serialize_team(obj.away_team)
 
-        return {
-            "id": team.id,
-            "name": team.name,
-            "logo": self._get_logo_url(team),
-        }
 
     # =========================
     # UTILS
     # =========================
+    def _serialize_team(self, team):
+        """
+        Format unique pour une équipe
+        → React peut afficher même si logo ou team est null
+        """
+        if not team:
+            return {
+                "id": None,
+                "name": None,
+                "logo": None,
+            }
+
+        return {
+            "id": team.id,
+            "name": team.name,
+            "logo": self._get_logo_url(team),
+        }
+
     def _get_logo_url(self, team):
         request = self.context.get("request")
 

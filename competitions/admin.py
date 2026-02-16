@@ -209,3 +209,4 @@ class CompetitionPenaltyAdmin(admin.ModelAdmin):
     search_fields = ("team__name", "competition__name", "reason")
     autocomplete_fields = ("competition", "team")
     readonly_fields = ("created_at",)
+

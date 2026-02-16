@@ -1,7 +1,6 @@
 from django.db import models
 from django.utils.text import slugify
 from django.utils import timezone
-from datetime import timedelta
 
 
 # =====================================================
@@ -74,6 +73,7 @@ class CompetitionTeam(models.Model):
         null=True,
         max_length=500
     )
+
     city = models.CharField(max_length=100, blank=True)
     coach = models.CharField(max_length=120, blank=True)
 
@@ -85,13 +85,16 @@ class CompetitionTeam(models.Model):
         ordering = ["name"]
         verbose_name = "Équipe de compétition"
         verbose_name_plural = "Équipes de compétition"
+        indexes = [
+            models.Index(fields=["competition", "is_active"]),
+        ]
 
     def __str__(self):
         return f"{self.name} – {self.competition.short_name}"
 
 
 # =====================================================
-# MATCH DE COMPÉTITION (AVEC CHRONO)
+# MATCH DE COMPÉTITION
 # =====================================================
 
 class CompetitionMatch(models.Model):
@@ -123,27 +126,14 @@ class CompetitionMatch(models.Model):
         related_name="away_matches"
     )
 
-    matchday = models.PositiveIntegerField(
-        default=1,
-        help_text="Journée (ex: 1, 2, 3...)"
-    )
-
+    matchday = models.PositiveIntegerField(default=1)
     datetime = models.DateTimeField()
 
     home_score = models.PositiveIntegerField(default=0)
     away_score = models.PositiveIntegerField(default=0)
 
-    # ===== CHRONO =====
-    started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Heure réelle de démarrage du match"
-    )
-
-    elapsed_seconds = models.PositiveIntegerField(
-        default=0,
-        help_text="Temps écoulé cumulé en secondes (hors pause)"
-    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    elapsed_seconds = models.PositiveIntegerField(default=0)
 
     status = models.CharField(
         max_length=20,
@@ -164,45 +154,26 @@ class CompetitionMatch(models.Model):
             )
         ]
 
-    # =================================================
-    # MÉTHODES CHRONO
-    # =================================================
-
     def get_live_seconds(self):
-        """
-        Retourne le temps réel écoulé (en secondes)
-        """
         if self.status == "LIVE" and self.started_at:
             delta = timezone.now() - self.started_at
             return self.elapsed_seconds + int(delta.total_seconds())
         return self.elapsed_seconds
 
     def get_minute_display(self):
-        """
-        Affichage du chrono en minutes (ex: 45', 90+2')
-        """
         seconds = self.get_live_seconds()
         minutes = seconds // 60
-
-        if minutes <= 90:
-            return f"{minutes}'"
-        else:
-            return f"90+{minutes - 90}'"
+        return f"{minutes}'" if minutes <= 90 else f"90+{minutes - 90}'"
 
     def __str__(self):
-        return f"{self.home_team} vs {self.away_team} ({self.competition.short_name})"
+        return f"{self.home_team} vs {self.away_team}"
 
 
 # =====================================================
-# PÉNALITÉ DE POINTS (CLASSEMENT)
+# PÉNALITÉS DE POINTS
 # =====================================================
 
 class CompetitionPenalty(models.Model):
-    """
-    Permet de retirer (ou ajouter) des points à une équipe
-    dans une compétition donnée
-    """
-
     competition = models.ForeignKey(
         Competition,
         on_delete=models.CASCADE,
@@ -217,15 +188,8 @@ class CompetitionPenalty(models.Model):
         db_index=True
     )
 
-    points = models.IntegerField(
-        help_text="Nombre de points retirés (ex: -3) ou ajoutés (+1)"
-    )
-
-    reason = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Motif de la sanction"
-    )
+    points = models.IntegerField()
+    reason = models.CharField(max_length=255, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -236,4 +200,55 @@ class CompetitionPenalty(models.Model):
 
     def __str__(self):
         sign = "+" if self.points > 0 else ""
-        return f"{self.team.name} {sign}{self.points} pts ({self.competition.short_name})"
+        return f"{self.team.name} {sign}{self.points} pts"
+
+
+# =====================================================
+# JOUEURS (EFFECTIF DU CLUB DANS UNE COMPÉTITION)
+# =====================================================
+
+class Player(models.Model):
+    POSITION_CHOICES = (
+        ("GK", "Gardien"),
+        ("DEF", "Défenseur"),
+        ("MID", "Milieu"),
+        ("ATT", "Attaquant"),
+    )
+
+    club = models.ForeignKey(
+        CompetitionTeam,
+        related_name="players",
+        on_delete=models.CASCADE
+    )
+
+    name = models.CharField(max_length=100)
+    number = models.PositiveIntegerField()
+    position = models.CharField(
+        max_length=10,
+        choices=POSITION_CHOICES
+    )
+
+    photo = models.ImageField(
+        upload_to="players/",
+        blank=True,
+        null=True,
+        max_length=500
+    )
+
+    age = models.PositiveIntegerField(blank=True, null=True)
+    nationality = models.CharField(max_length=50, blank=True)
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["number"]
+        unique_together = ("club", "number")
+        indexes = [
+            models.Index(fields=["club", "is_active"]),
+        ]
+        verbose_name = "Joueur"
+        verbose_name_plural = "Joueurs"
+
+    def __str__(self):
+        return f"{self.name} #{self.number} ({self.club.name})"
