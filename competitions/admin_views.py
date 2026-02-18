@@ -3,27 +3,25 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.utils.dateparse import parse_datetime
 
-from .models import Competition, CompetitionTeam
+from .models import Competition, CompetitionTeam, Player
 from matches.models import Match, Round
 from clubs.models import Club
 
 
 @staff_member_required
 def competition_matches_view(request, competition_id):
-    # =====================================================
-    # 🔒 SOURCE DE VÉRITÉ : compétition courante
-    # =====================================================
+
     competition = get_object_or_404(Competition, id=competition_id)
 
     # =====================================================
-    # JOURNÉES STRICTEMENT LIÉES À LA COMPÉTITION
+    # JOURNÉES
     # =====================================================
     rounds = Round.objects.filter(
         competition=competition
     ).order_by("number")
 
     # =====================================================
-    # CLUBS ENGAGÉS DANS LA COMPÉTITION (SOURCE UNIQUE)
+    # CLUBS ENGAGÉS VIA CompetitionTeam
     # =====================================================
     clubs = Club.objects.filter(
         club_competitions__competition=competition,
@@ -31,7 +29,7 @@ def competition_matches_view(request, competition_id):
     ).distinct().order_by("name")
 
     # =====================================================
-    # MATCHS STRICTEMENT DE LA COMPÉTITION
+    # MATCHS
     # =====================================================
     matches = Match.objects.filter(
         round__competition=competition
@@ -40,15 +38,15 @@ def competition_matches_view(request, competition_id):
     ).order_by("-datetime")
 
     # =====================================================
-    # ➕ AJOUT D’UN MATCH (SÉCURISÉ À 100 %)
+    # AJOUT MATCH
     # =====================================================
     if request.method == "POST" and request.POST.get("action") == "add_match":
+
         round_id = request.POST.get("round")
         home_id = request.POST.get("home_club")
         away_id = request.POST.get("away_club")
         datetime_str = request.POST.get("datetime")
 
-        # Sécurité basique
         if not all([round_id, home_id, away_id, datetime_str]):
             messages.error(request, "Tous les champs sont obligatoires.")
             return redirect(request.path)
@@ -57,7 +55,6 @@ def competition_matches_view(request, competition_id):
             messages.error(request, "Une équipe ne peut pas jouer contre elle-même.")
             return redirect(request.path)
 
-        # 🔐 La journée DOIT appartenir à la compétition
         round_obj = Round.objects.filter(
             id=round_id,
             competition=competition
@@ -67,27 +64,25 @@ def competition_matches_view(request, competition_id):
             messages.error(request, "Journée invalide pour cette compétition.")
             return redirect(request.path)
 
-        # 🔐 Les clubs DOIVENT être engagés dans la compétition
-        valid_clubs = CompetitionClub.objects.filter(
+        # 🔐 Vérification via CompetitionTeam (et non CompetitionClub)
+        valid_teams = CompetitionTeam.objects.filter(
             competition=competition,
             is_active=True,
             club_id__in=[home_id, away_id]
         ).values_list("club_id", flat=True)
 
-        if len(valid_clubs) != 2:
+        if len(valid_teams) != 2:
             messages.error(
                 request,
                 "Les clubs sélectionnés ne sont pas engagés dans cette compétition."
             )
             return redirect(request.path)
 
-        # Parsing date sécurisé
         match_datetime = parse_datetime(datetime_str)
         if not match_datetime:
             messages.error(request, "Date et heure invalides.")
             return redirect(request.path)
 
-        # ✅ CRÉATION DU MATCH
         Match.objects.create(
             round=round_obj,
             home_club_id=home_id,
@@ -100,9 +95,10 @@ def competition_matches_view(request, competition_id):
         return redirect(request.path)
 
     # =====================================================
-    # ⚡ ACTIONS RAPIDES (LIVE / HT / FT / etc.)
+    # UPDATE STATUS
     # =====================================================
     if request.method == "POST" and request.POST.get("action") == "update_status":
+
         match_id = request.POST.get("match_id")
         new_status = request.POST.get("status")
 
@@ -118,13 +114,10 @@ def competition_matches_view(request, competition_id):
 
         return redirect(request.path)
 
-    # =====================================================
-    # CONTEXTE TEMPLATE
-    # =====================================================
     context = {
         "competition": competition,
         "rounds": rounds,
-        "clubs": clubs,       # ✅ clubs filtrés par CompetitionClub
+        "clubs": clubs,
         "matches": matches,
     }
 
@@ -134,10 +127,14 @@ def competition_matches_view(request, competition_id):
         context
     )
 
- # =====================================================
-    # CLUBS + JOUEURS
-    # =====================================================
+
+# =====================================================
+# CLUBS + JOUEURS
+# =====================================================
+
+@staff_member_required
 def admin_competition_clubs(request, competition_id):
+
     competition = get_object_or_404(Competition, id=competition_id)
 
     clubs = (
@@ -146,16 +143,18 @@ def admin_competition_clubs(request, competition_id):
         .select_related("club")
     )
 
-    # ➕ ajout joueur
+    # ➕ ajout joueur (corrigé selon ton modèle réel)
     if request.method == "POST" and request.POST.get("action") == "add_player":
+
         club_id = request.POST.get("club_id")
+
         Player.objects.create(
             club_id=club_id,
-            first_name=request.POST.get("first_name"),
-            last_name=request.POST.get("last_name"),
+            name=request.POST.get("name"),
             number=request.POST.get("number") or None,
             position=request.POST.get("position", ""),
         )
+
         return redirect(request.path)
 
     return render(
