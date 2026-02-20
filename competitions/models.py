@@ -23,7 +23,6 @@ class Competition(models.Model):
 
     name = models.CharField(max_length=150, unique=True)
     short_name = models.CharField(max_length=50)
-
     slug = models.SlugField(unique=True, blank=True)
 
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
@@ -204,7 +203,7 @@ class CompetitionPenalty(models.Model):
 
 
 # =====================================================
-# JOUEURS (EFFECTIF DU CLUB DANS UNE COMPÉTITION)
+# JOUEURS
 # =====================================================
 
 class Player(models.Model):
@@ -223,10 +222,7 @@ class Player(models.Model):
 
     name = models.CharField(max_length=100)
     number = models.PositiveIntegerField()
-    position = models.CharField(
-        max_length=10,
-        choices=POSITION_CHOICES
-    )
+    position = models.CharField(max_length=10, choices=POSITION_CHOICES)
 
     photo = models.ImageField(
         upload_to="players/",
@@ -237,6 +233,17 @@ class Player(models.Model):
 
     age = models.PositiveIntegerField(blank=True, null=True)
     nationality = models.CharField(max_length=50, blank=True)
+
+    # 🔥 NOUVEAUX CHAMPS
+    height = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Taille en centimètres"
+    )
+
+    previous_club_1 = models.CharField(max_length=150, blank=True)
+    previous_club_2 = models.CharField(max_length=150, blank=True)
+    previous_club_3 = models.CharField(max_length=150, blank=True)
 
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -17,6 +17,22 @@
   margin-bottom: 24px;
 }
 
+.header-bar {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+
+.btn-clubs {
+  background:#3498db;
+  color:white;
+  padding:10px 16px;
+  border-radius:6px;
+  font-weight:600;
+  text-decoration:none;
+}
+
 .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
 .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
 
@@ -67,7 +83,18 @@ input, select { width:100%; padding:10px; }
 
 <div class="admin-wrap">
 
-<h1>Espace Admin — {{ competition.name }}</h1>
+<!-- ================= HEADER ================= -->
+<div class="header-bar">
+  <h1>Espace Admin — {{ competition.name }}</h1>
+
+  <a
+    href="{% url 'competitions:admin-competition-clubs' competition.id %}"
+    class="btn-clubs"
+  >
+    ⚽ Gérer les Clubs
+  </a>
+</div>
+
 
 <!-- ================= FORMULAIRE ================= -->
 <div class="card">
@@ -146,6 +173,7 @@ input, select { width:100%; padding:10px; }
   </form>
 </div>
 
+
 <!-- ================= LISTE MATCHS ================= -->
 <div class="card">
   <h2>Matchs de la compétition</h2>
@@ -186,7 +214,6 @@ input, select { width:100%; padding:10px; }
 
 </div>
 
-<!-- ================= JS ================= -->
 <script>
 document.querySelectorAll("tr.clickable").forEach(row => {
   row.addEventListener("click", () => {
@@ -204,4 +231,3 @@ document.querySelectorAll("tr.clickable").forEach(row => {
 </script>
 
 {% endblock %}
-

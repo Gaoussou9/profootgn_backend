@@ -68,7 +68,7 @@ def competition_matches_api(request, competition_id):
 
 
 # =====================================================
-# CLASSEMENT
+# CLASSEMENT (AVEC FORM + PENALTY)
 # =====================================================
 
 @api_view(["GET"])
@@ -106,6 +106,8 @@ def competition_standings_api(request, competition_id):
             "goals_against": row["goals_against"],
             "goal_difference": row["goal_difference"],
             "points": row["points"],
+            "penalty_points": row.get("penalty_points", 0),
+            "form": row.get("form", []),
         })
 
         position += 1
@@ -161,7 +163,7 @@ def competition_clubs_api(request, competition_id):
 
 
 # =====================================================
-# DETAIL CLUB
+# DETAIL CLUB (AVEC STATS AJOUTÉES)
 # =====================================================
 
 @api_view(["GET"])
@@ -179,6 +181,26 @@ def competition_club_detail_api(request, competition_id, club_id):
         is_active=True
     )
 
+    # 🔥 On récupère le classement pour trouver les stats du club
+    table = calculate_competition_standings(competition)
+
+    stats_data = None
+    position = 1
+
+    for row in table:
+        if row["team"].id == club.id:
+            stats_data = {
+                "position": position,
+                "played": row["played"],
+                "wins": row["wins"],
+                "draws": row["draws"],
+                "losses": row["losses"],
+                "goal_difference": row["goal_difference"],
+                "points": row["points"],
+            }
+            break
+        position += 1
+
     return Response({
         "club": {
             "id": club.id,
@@ -195,7 +217,8 @@ def competition_club_detail_api(request, competition_id, club_id):
             "id": competition.id,
             "name": competition.name,
             "season": competition.season,
-        }
+        },
+        "stats": stats_data
     })
 
 
@@ -234,8 +257,9 @@ def competition_club_matches_api(request, competition_id, club_id):
 
     return Response(serializer.data)
 
+
 # =====================================================
-# DÉTAIL D’UN MATCH DANS UNE COMPÉTITION
+# DÉTAIL D’UN MATCH
 # =====================================================
 
 @api_view(["GET"])
@@ -259,8 +283,9 @@ def competition_match_detail(request, competition_id, match_id):
 
     return Response(serializer.data)
 
+
 # =====================================================
-# JOUEURS D’UN CLUB DANS UNE COMPÉTITION
+# JOUEURS D’UN CLUB
 # =====================================================
 
 @api_view(["GET"])
@@ -278,7 +303,6 @@ def competition_club_players_api(request, competition_id, club_id):
         is_active=True
     )
 
-    # ⚠️ Adapte si ton modèle Player est différent
     players = club.players.filter(is_active=True).order_by("number")
 
     data = []

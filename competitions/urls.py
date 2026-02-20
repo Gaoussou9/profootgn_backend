@@ -10,19 +10,36 @@ from .api_views import (
     competition_club_players_api,
     competition_match_detail,
 )
-from competitions.admin_views import admin_competition_clubs
+from competitions.admin_views import (
+    admin_competition_clubs,
+    competition_club_players_view,  # ✅ AJOUT IMPORTANT
+)
 
 app_name = "competitions"
 
 urlpatterns = [
-    # =========================
-    # ADMIN UI
-    # =========================
+
+    # =====================================================
+    # ================= ADMIN UI ==========================
+    # =====================================================
+
+    # Page clubs d'une compétition
     path(
         "admin/competitions/<int:competition_id>/clubs/",
         admin_competition_clubs,
         name="admin-competition-clubs",
     ),
+
+    # ✅ PAGE EFFECTIF D'UN CLUB (AJOUT)
+    path(
+        "admin/competitions/<int:competition_id>/clubs/<int:club_id>/players/",
+        competition_club_players_view,
+        name="admin-club-players",
+    ),
+
+    # =====================================================
+    # ================= VUES TEMPLATE =====================
+    # =====================================================
 
     path(
         "<int:competition_id>/matches/",
@@ -30,9 +47,9 @@ urlpatterns = [
         name="competition_matches",
     ),
 
-    # =========================
-    # API PUBLIQUE
-    # =========================
+    # =====================================================
+    # ================= API PUBLIQUE ======================
+    # =====================================================
 
     # Liste compétitions
     path(
@@ -48,7 +65,7 @@ urlpatterns = [
         name="api_competition_matches",
     ),
 
-    # ✅ DÉTAIL MATCH COMPÉTITION (CORRIGÉ ICI)
+    # Détail match compétition
     path(
         "api/competitions/<int:competition_id>/matches/<int:match_id>/",
         competition_match_detail,
