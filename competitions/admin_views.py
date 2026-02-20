@@ -7,7 +7,6 @@ from django.db import IntegrityError
 
 from .models import Competition, CompetitionTeam, Player
 from matches.models import Match, Round
-from clubs.models import Club
 
 
 # =====================================================
@@ -23,11 +22,11 @@ def competition_matches_view(request, competition_id):
         competition=competition
     ).order_by("number")
 
+    # ✅ Correction ici
     teams = (
         CompetitionTeam.objects
         .filter(competition=competition, is_active=True)
-        .select_related("club")
-        .order_by("club__name")
+        .order_by("name")
     )
 
     matches = (
@@ -98,11 +97,11 @@ def admin_competition_clubs(request, competition_id):
 
     competition = get_object_or_404(Competition, id=competition_id)
 
+    # ✅ Correction ici aussi
     teams = (
         CompetitionTeam.objects
         .filter(competition=competition, is_active=True)
-        .select_related("club")
-        .order_by("club__name")
+        .order_by("name")
     )
 
     return render(
@@ -139,6 +138,7 @@ def competition_club_players_view(request, competition_id, club_id):
     # =====================================================
     # AJOUT JOUEUR
     # =====================================================
+
     if request.method == "POST" and request.POST.get("action") == "add_player":
 
         name = request.POST.get("name")
@@ -189,6 +189,7 @@ def competition_club_players_view(request, competition_id, club_id):
     # =====================================================
     # UPDATE JOUEUR
     # =====================================================
+
     if request.method == "POST" and request.POST.get("action") == "update_player":
 
         player_id = request.POST.get("player_id")
@@ -245,8 +246,9 @@ def competition_club_players_view(request, competition_id, club_id):
         return redirect(request.path)
 
     # =====================================================
-    # SUPPRESSION JOUEUR (SOFT DELETE)
+    # SUPPRESSION JOUEUR
     # =====================================================
+
     if request.method == "POST" and request.POST.get("action") == "delete_player":
 
         player_id = request.POST.get("player_id")
@@ -266,6 +268,7 @@ def competition_club_players_view(request, competition_id, club_id):
     # =====================================================
     # MODE EDITION
     # =====================================================
+
     edit_player = None
     edit_id = request.GET.get("edit")
 
