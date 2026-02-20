@@ -26,7 +26,8 @@ def competition_matches_view(request, competition_id):
     teams = (
         CompetitionTeam.objects
         .filter(competition=competition, is_active=True)
-        .order_by("name")
+        .select_related("club")
+.order_by("club__name")
     )
 
     matches = (
