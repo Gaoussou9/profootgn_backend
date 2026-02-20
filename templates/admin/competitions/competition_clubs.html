@@ -1,0 +1,170 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+
+.admin-wrap {
+  max-width: 1200px;
+  margin: auto;
+  padding: 24px;
+}
+
+/* ===== TITRE ===== */
+.page-title {
+  font-size: 32px;
+  font-weight: 800;
+  margin-bottom: 30px;
+}
+
+/* ===== CARD GLOBAL ===== */
+.card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 8px 25px rgba(0,0,0,.05);
+}
+
+/* ===== GRID CLUBS ===== */
+.club-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+/* ===== CARTE CLUB ===== */
+.club-card {
+  background: linear-gradient(145deg,#f9fafc,#ffffff);
+  border-radius: 16px;
+  padding: 20px;
+  transition: all .25s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,.05);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.club-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 30px rgba(0,0,0,.08);
+}
+
+.club-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.club-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #f0f2f5;
+  padding: 6px;
+}
+
+.club-name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.club-city {
+  font-size: 13px;
+  color: #0f0d0d;
+}
+
+/* ===== BOUTON ===== */
+.btn-effectif {
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: white;
+  padding: 12px 14px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+  transition: all .25s ease;
+  display: block;
+}
+
+.btn-effectif:hover {
+  background: linear-gradient(135deg, #1e293b, #334155);
+  transform: translateY(-2px);
+}
+
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 600px) {
+  .page-title {
+    font-size: 22px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .club-card {
+    padding: 16px;
+  }
+}
+
+</style>
+
+<div class="admin-wrap">
+
+  <div class="page-title">
+    ⚽ Clubs — {{ competition.name }}
+  </div>
+
+  <div class="card">
+
+    <h2 style="margin-bottom: 10px; font-size:20px;">
+      Clubs engagés
+    </h2>
+
+    <div class="club-grid">
+
+      {% for club in teams %}
+      <div class="club-card">
+
+        <div class="club-header">
+
+          {% if club.logo %}
+            <img src="{{ club.logo.url }}" class="club-logo">
+          {% else %}
+            <div class="club-logo"></div>
+          {% endif %}
+
+          <div>
+            <div class="club-name">
+              {{ club.name }}
+            </div>
+            <div class="club-city">
+              {{ club.city|default:"Ville non définie" }}
+            </div>
+          </div>
+
+        </div>
+
+        <a
+          href="{% url 'competitions:admin-club-players' competition.id club.id %}"
+          class="btn-effectif"
+        >
+        Gérer l’effectif
+        </a>
+
+      </div>
+      {% empty %}
+        <p>Aucun club dans cette compétition.</p>
+      {% endfor %}
+
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}

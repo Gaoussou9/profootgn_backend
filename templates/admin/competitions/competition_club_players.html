@@ -1,0 +1,350 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+
+<style>
+.admin-wrap {
+  max-width: 1100px;
+  margin: auto;
+  padding: 20px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.05);
+  margin-bottom: 30px;
+}
+
+h1 { margin-bottom: 5px; }
+
+.subtitle {
+  color: #666;
+  margin-bottom: 25px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 6px;
+}
+
+input, select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #2c3e50;
+}
+
+.btn-primary {
+  background: #2c3e50;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+}
+
+.btn-primary:hover { background: #1a252f; }
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-danger:hover { background: #c0392b; }
+
+.btn-cancel {
+  background: #95a5a6;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  margin-left: 10px;
+  font-size: 14px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th, .table td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+
+.table th {
+  background: #f8f9fa;
+  text-align: left;
+}
+
+.player-photo {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #eee;
+}
+
+.player-row {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.player-row:hover {
+  background: #f2f6fa;
+}
+
+.edit-mode {
+  border-left: 5px solid #3498db;
+}
+
+.back-link {
+  margin-top: 15px;
+  display: inline-block;
+  text-decoration: none;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.small-text {
+  font-size: 12px;
+  color: #777;
+}
+</style>
+
+<div class="admin-wrap">
+
+  <h1>Effectif — {{ club.name }}</h1>
+  <div class="subtitle">
+    {{ competition.name }} • {{ competition.season }}
+  </div>
+
+  <!-- ================= FORMULAIRE ================= -->
+  <div class="card {% if edit_player %}edit-mode{% endif %}">
+    <h3>
+      {% if edit_player %}
+        ✏️ Modifier joueur
+      {% else %}
+        Ajouter un joueur
+      {% endif %}
+    </h3>
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+
+      {% if edit_player %}
+        <input type="hidden" name="action" value="update_player">
+        <input type="hidden" name="player_id" value="{{ edit_player.id }}">
+      {% else %}
+        <input type="hidden" name="action" value="add_player">
+      {% endif %}
+
+      <div class="form-grid">
+        <div>
+          <label>Nom</label>
+          <input type="text" name="name"
+                 value="{{ edit_player.name|default:'' }}"
+                 required>
+        </div>
+
+        <div>
+          <label>Numéro</label>
+          <input type="number" name="number"
+                 value="{{ edit_player.number|default:'' }}"
+                 required>
+        </div>
+
+        <div>
+          <label>Poste</label>
+          <select name="position" required>
+            <option value="">-- Sélectionner --</option>
+            <option value="GK" {% if edit_player.position == "GK" %}selected{% endif %}>Gardien</option>
+            <option value="DEF" {% if edit_player.position == "DEF" %}selected{% endif %}>Défenseur</option>
+            <option value="MID" {% if edit_player.position == "MID" %}selected{% endif %}>Milieu</option>
+            <option value="ATT" {% if edit_player.position == "ATT" %}selected{% endif %}>Attaquant</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Âge</label>
+          <input type="number" name="age"
+                 value="{{ edit_player.age|default:'' }}">
+        </div>
+
+        <div>
+          <label>Nationalité</label>
+          <input type="text" name="nationality"
+                 value="{{ edit_player.nationality|default:'' }}">
+        </div>
+
+        <div>
+          <label>Taille (cm)</label>
+          <input type="number" name="height"
+                 value="{{ edit_player.height|default:'' }}">
+        </div>
+
+        <div>
+          <label>Ancien club 1</label>
+          <input type="text" name="previous_club_1"
+                 value="{{ edit_player.previous_club_1|default:'' }}">
+        </div>
+
+        <div>
+          <label>Ancien club 2</label>
+          <input type="text" name="previous_club_2"
+                 value="{{ edit_player.previous_club_2|default:'' }}">
+        </div>
+
+        <div>
+          <label>Ancien club 3</label>
+          <input type="text" name="previous_club_3"
+                 value="{{ edit_player.previous_club_3|default:'' }}">
+        </div>
+
+        <div>
+          <label>Photo</label>
+          <input type="file" name="photo" accept="image/*">
+        </div>
+      </div>
+
+      <br>
+
+      <button type="submit" class="btn-primary">
+        {% if edit_player %}
+          ✓ Modifier joueur
+        {% else %}
+          + Ajouter joueur
+        {% endif %}
+      </button>
+
+      {% if edit_player %}
+        <a href="{{ request.path }}" class="btn-cancel">
+          Annuler
+        </a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- ================= LISTE ================= -->
+  <div class="card">
+    <h3>Joueurs enregistrés</h3>
+
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Photo</th>
+          <th>#</th>
+          <th>Nom</th>
+          <th>Poste</th>
+          <th>Âge</th>
+          <th>Taille</th>
+          <th>Nationalité</th>
+          <th>Anciens clubs</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for player in players %}
+        <tr class="player-row" data-id="{{ player.id }}">
+          <td>
+            {% if player.photo %}
+              <img src="{{ player.photo.url }}" class="player-photo">
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>{{ player.number }}</td>
+          <td><strong>{{ player.name }}</strong></td>
+          <td>{{ player.get_position_display }}</td>
+          <td>{{ player.age|default:"—" }}</td>
+          <td>{% if player.height %}{{ player.height }} cm{% else %}—{% endif %}</td>
+          <td>{{ player.nationality|default:"—" }}</td>
+          <td class="small-text">
+            {% if player.previous_club_1 %}• {{ player.previous_club_1 }}<br>{% endif %}
+            {% if player.previous_club_2 %}• {{ player.previous_club_2 }}<br>{% endif %}
+            {% if player.previous_club_3 %}• {{ player.previous_club_3 }}{% endif %}
+            {% if not player.previous_club_1 and not player.previous_club_2 and not player.previous_club_3 %}—{% endif %}
+          </td>
+          <td>
+            <button class="btn-danger delete-btn"
+                    data-id="{{ player.id }}">
+              Supprimer
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9">Aucun joueur enregistré</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <a href="{% url 'competitions:admin-competition-clubs' competition.id %}"
+     class="back-link">
+    ← Retour aux clubs
+  </a>
+
+</div>
+
+<script>
+document.querySelectorAll(".player-row").forEach(row => {
+  row.addEventListener("click", function(e) {
+    if (e.target.classList.contains("delete-btn")) return;
+    const playerId = this.dataset.id;
+    window.location.href = `?edit=${playerId}`;
+  });
+});
+
+document.querySelectorAll(".delete-btn").forEach(button => {
+  button.addEventListener("click", function(e) {
+    e.stopPropagation();
+    const id = this.dataset.id;
+
+    if (!confirm("Voulez-vous vraiment supprimer ce joueur ?")) return;
+
+    fetch("", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: `action=delete_player&player_id=${id}`
+    })
+    .then(response => {
+      if (response.ok) {
+        location.reload();
+      } else {
+        alert("Erreur lors de la suppression.");
+      }
+    });
+  });
+});
+</script>
+
+{% endblock %}
