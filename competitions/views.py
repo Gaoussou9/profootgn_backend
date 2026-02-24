@@ -35,7 +35,7 @@ def competition_matches_view(request, competition_id):
     ).select_related(
         "home_team",
         "away_team"
-    ).order_by("matchday", "datetime")
+    ).order_by("-matchday", "-datetime")
 
     # =========================
     # ACTIONS POST
