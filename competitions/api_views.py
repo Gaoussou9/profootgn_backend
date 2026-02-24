@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
-from .models import Competition, CompetitionMatch, CompetitionTeam
+from .models import Competition, CompetitionMatch, CompetitionTeam, Player
 from .serializers import (
     CompetitionMatchSerializer,
     CompetitionListSerializer,
@@ -331,4 +331,55 @@ def competition_club_players_api(request, competition_id, club_id):
             "name": club.name,
         },
         "players": data
+    })
+# =====================================================
+# DETAILS PLAYERS D’UN CLUB
+# =====================================================
+@api_view(["GET"])
+def competition_player_detail_api(request, competition_id, club_id, player_id):
+    competition = get_object_or_404(
+        Competition,
+        id=competition_id,
+        is_active=True
+    )
+
+    club = get_object_or_404(
+        CompetitionTeam,
+        id=club_id,
+        competition=competition,
+        is_active=True
+    )
+
+    player = get_object_or_404(
+        Player,
+        id=player_id,
+        club=club,
+        is_active=True
+    )
+
+    return Response({
+        "id": player.id,
+        "name": player.name,
+        "number": player.number,
+        "position": player.position,
+        "photo": (
+            request.build_absolute_uri(player.photo.url)
+            if getattr(player, "photo", None)
+            else None
+        ),
+        "age": player.age,
+        "nationality": player.nationality,
+        "height": player.height,
+        "previous_club_1": player.previous_club_1,
+        "previous_club_2": player.previous_club_2,
+        "previous_club_3": player.previous_club_3,
+        "club": {
+            "id": club.id,
+            "name": club.name,
+            "logo": (
+                request.build_absolute_uri(club.logo.url)
+                if getattr(club, "logo", None)
+                else None
+            ),
+        }
     })

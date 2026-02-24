@@ -9,6 +9,7 @@ from .api_views import (
     competition_standings_api,
     competition_club_players_api,
     competition_match_detail,
+    competition_player_detail_api,
 )
 from competitions.admin_views import (
     admin_competition_clubs,
@@ -106,4 +107,11 @@ urlpatterns = [
         competition_club_players_api,
         name="api_competition_club_players",
     ),
+# Détail joueur
+path(
+    "api/competitions/<int:competition_id>/clubs/<int:club_id>/players/<int:player_id>/",
+    competition_player_detail_api,
+    name="api_competition_player_detail",
+),
+    
 ]
