@@ -25,6 +25,14 @@ class Competition(models.Model):
     short_name = models.CharField(max_length=50)
     slug = models.SlugField(unique=True, blank=True)
 
+    # ✅ AJOUT LOGO (sans casser)
+    logo = models.ImageField(
+        upload_to="competition_logos/",
+        blank=True,
+        null=True,
+        max_length=500
+    )
+
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
 
@@ -234,7 +242,6 @@ class Player(models.Model):
     age = models.PositiveIntegerField(blank=True, null=True)
     nationality = models.CharField(max_length=50, blank=True)
 
-    # 🔥 NOUVEAUX CHAMPS
     height = models.PositiveIntegerField(
         blank=True,
         null=True,

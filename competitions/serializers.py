@@ -7,13 +7,27 @@ from .models import Competition, CompetitionMatch
 # =====================================================
 
 class CompetitionListSerializer(serializers.ModelSerializer):
+    logo = serializers.SerializerMethodField()
+
     class Meta:
         model = Competition
         fields = [
             "id",
             "name",
             "slug",
+            "season",
+            "logo",
         ]
+
+    def get_logo(self, obj):
+        request = self.context.get("request")
+
+        if obj.logo and hasattr(obj.logo, "url"):
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+
+        return None
 
 
 # =====================================================
@@ -42,7 +56,6 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
             "status_label",
         ]
 
-
     # =========================
     # TEAMS (FORMAT STABLE FRONT)
     # =========================
@@ -52,15 +65,10 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
     def get_away_team(self, obj):
         return self._serialize_team(obj.away_team)
 
-
     # =========================
     # UTILS
     # =========================
     def _serialize_team(self, team):
-        """
-        Format unique pour une équipe
-        → React peut afficher même si logo ou team est null
-        """
         if not team:
             return {
                 "id": None,
