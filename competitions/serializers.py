@@ -33,7 +33,6 @@ class CompetitionListSerializer(serializers.ModelSerializer):
 # =====================================================
 # MATCHS D’UNE COMPÉTITION
 # =====================================================
-
 class CompetitionMatchSerializer(serializers.ModelSerializer):
     home_team = serializers.SerializerMethodField()
     away_team = serializers.SerializerMethodField()
@@ -54,7 +53,19 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
             "away_score",
             "status",
             "status_label",
+
+            # 🔥 OBLIGATOIRE POUR LE CHRONO
+            "started_at",
+            "elapsed_seconds",
         ]
+    # =========================
+    # MINUTE DISPLAY (CHRONO)
+    # =========================
+    def get_minute_display(self, obj):
+        try:
+            return obj.get_minute_display()
+        except Exception:
+            return None
 
     # =========================
     # TEAMS (FORMAT STABLE FRONT)

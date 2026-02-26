@@ -13,6 +13,8 @@ from matches.models import Match, Round
 # MATCHS ADMIN (PAGE PRINCIPALE COMPÉTITION)
 # =====================================================
 
+from django.utils import timezone
+
 @staff_member_required
 def competition_matches_view(request, competition_id):
 
@@ -22,12 +24,10 @@ def competition_matches_view(request, competition_id):
         competition=competition
     ).order_by("number")
 
-    # ✅ Correction ici
     teams = (
         CompetitionTeam.objects
         .filter(competition=competition, is_active=True)
-        .select_related("club")
-.order_by("club__name")
+        .order_by("name")
     )
 
     matches = (
@@ -37,45 +37,139 @@ def competition_matches_view(request, competition_id):
         .order_by("-datetime")
     )
 
-    if request.method == "POST" and request.POST.get("action") == "add_match":
+    if request.method == "POST":
 
-        round_id = request.POST.get("round")
-        home_id = request.POST.get("home_club")
-        away_id = request.POST.get("away_club")
-        datetime_str = request.POST.get("datetime")
+        action = request.POST.get("action")
+        match_id = request.POST.get("match_id")
 
-        if not all([round_id, home_id, away_id, datetime_str]):
-            messages.error(request, "Tous les champs sont obligatoires.")
+        # =====================================================
+        # AJOUT MATCH
+        # =====================================================
+
+        if action == "add_match":
+
+            round_id = request.POST.get("round")
+            home_id = request.POST.get("home_club")
+            away_id = request.POST.get("away_club")
+            datetime_str = request.POST.get("datetime")
+
+            if not all([round_id, home_id, away_id, datetime_str]):
+                messages.error(request, "Tous les champs sont obligatoires.")
+                return redirect(request.path)
+
+            if home_id == away_id:
+                messages.error(request, "Une équipe ne peut pas jouer contre elle-même.")
+                return redirect(request.path)
+
+            round_obj = Round.objects.filter(
+                id=round_id,
+                competition=competition
+            ).first()
+
+            if not round_obj:
+                messages.error(request, "Journée invalide.")
+                return redirect(request.path)
+
+            match_datetime = parse_datetime(datetime_str)
+            if not match_datetime:
+                messages.error(request, "Date invalide.")
+                return redirect(request.path)
+
+            Match.objects.create(
+                round=round_obj,
+                home_club_id=home_id,
+                away_club_id=away_id,
+                datetime=match_datetime,
+                status="SCHEDULED",
+            )
+
+            messages.success(request, "Match ajouté avec succès.")
             return redirect(request.path)
 
-        if home_id == away_id:
-            messages.error(request, "Une équipe ne peut pas jouer contre elle-même.")
+        # =====================================================
+        # ACTIONS SUR MATCH EXISTANT
+        # =====================================================
+
+        if match_id:
+
+            match = get_object_or_404(Match, id=match_id)
+            now = timezone.now()
+
+            # ▶ DÉMARRER (1ère MT)
+            if action == "start":
+
+                match.elapsed_seconds = 0
+                match.started_at = now
+                match.status = "LIVE"
+
+            # ⏸ PAUSE (FIN 1ère MT EXACT 45:00)
+            elif action == "pause":
+
+                if match.status == "LIVE":
+
+                    # 🔥 On force la fin de 1ère mi-temps à 45:00
+                    match.elapsed_seconds = 45 * 60
+                    match.started_at = None
+                    match.status = "HT"
+
+                    match.save()
+                    messages.success(request, "Mi-temps atteinte (45').")
+                    return redirect(request.path)
+
+            # ▶ REPRENDRE 2E MI-TEMPS (REPART TOUJOURS À 45:00)
+            elif action == "resume":
+
+                if match.status == "HT":
+
+                    # 🔥 RESET PROPRE 2e MT
+                    match.elapsed_seconds = 45 * 60
+                    match.started_at = now
+                    match.status = "LIVE"
+
+                    match.save()
+                    messages.success(request, "2e mi-temps démarrée à 45'.")
+                    return redirect(request.path)
+
+            # 🔥 SYNCHRONISER MINUTE (RETARD)
+            elif action == "set_minute":
+
+                try:
+                    minute = int(request.POST.get("minute", 0))
+                except ValueError:
+                    messages.error(request, "Minute invalide.")
+                    return redirect(request.path)
+
+                if minute < 0 or minute > 130:
+                    messages.error(request, "Minute hors limite (0 - 130).")
+                    return redirect(request.path)
+
+                match.elapsed_seconds = minute * 60
+                match.started_at = now
+                match.status = "LIVE"
+
+                messages.success(request, f"Minute synchronisée à {minute}'.")
+                match.save()
+                return redirect(request.path)
+
+            # ⏹ FIN MATCH
+            elif action == "finish":
+
+                if match.status == "LIVE" and match.started_at:
+                    elapsed = int((now - match.started_at).total_seconds())
+                    match.elapsed_seconds += elapsed
+
+                match.started_at = None
+                match.status = "FT"
+
+            # 🔁 REVENIR À PRÉVU
+            elif action == "scheduled":
+
+                match.status = "SCHEDULED"
+                match.started_at = None
+                match.elapsed_seconds = 0
+
+            match.save()
             return redirect(request.path)
-
-        round_obj = Round.objects.filter(
-            id=round_id,
-            competition=competition
-        ).first()
-
-        if not round_obj:
-            messages.error(request, "Journée invalide.")
-            return redirect(request.path)
-
-        match_datetime = parse_datetime(datetime_str)
-        if not match_datetime:
-            messages.error(request, "Date invalide.")
-            return redirect(request.path)
-
-        Match.objects.create(
-            round=round_obj,
-            home_club_id=home_id,
-            away_club_id=away_id,
-            datetime=match_datetime,
-            status="SCHEDULED",
-        )
-
-        messages.success(request, "Match ajouté avec succès.")
-        return redirect(request.path)
 
     return render(
         request,
@@ -87,8 +181,6 @@ def competition_matches_view(request, competition_id):
             "matches": matches,
         },
     )
-
-
 # =====================================================
 # PAGE CLUBS ADMIN
 # =====================================================

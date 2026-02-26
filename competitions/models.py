@@ -25,7 +25,6 @@ class Competition(models.Model):
     short_name = models.CharField(max_length=50)
     slug = models.SlugField(unique=True, blank=True)
 
-    # ✅ AJOUT LOGO (sans casser)
     logo = models.ImageField(
         upload_to="competition_logos/",
         blank=True,
@@ -161,20 +160,74 @@ class CompetitionMatch(models.Model):
             )
         ]
 
+    # =========================
+    # CHRONO MOTEUR
+    # =========================
+
     def get_live_seconds(self):
+        """
+        Retourne le nombre total de secondes écoulées.
+        """
         if self.status == "LIVE" and self.started_at:
             delta = timezone.now() - self.started_at
             return self.elapsed_seconds + int(delta.total_seconds())
+
+        return self.elapsed_seconds
+
+    # =====================================================
+    # CHRONO MOTEUR
+    # =====================================================
+
+    def get_live_seconds(self):
+        """
+        Retourne le nombre total de secondes écoulées.
+        """
+        if self.status == "LIVE" and self.started_at:
+            delta = timezone.now() - self.started_at
+            return self.elapsed_seconds + int(delta.total_seconds())
+
         return self.elapsed_seconds
 
     def get_minute_display(self):
+        """
+        Affichage chrono football réaliste :
+        0-45
+        45+X
+        46-90
+        90+X
+        """
+
+        # Match terminé
+        if self.status == "FT":
+            return "Fin"
+
+        # Mi-temps
+        if self.status == "HT":
+            return "Mi-temps"
+
         seconds = self.get_live_seconds()
         minutes = seconds // 60
-        return f"{minutes}'" if minutes <= 90 else f"90+{minutes - 90}'"
+
+        # 1ère mi-temps normale
+        if minutes <= 45:
+            return f"{minutes}'"
+
+        # Temps additionnel 1ère MT
+        if 45 < minutes < 60:
+            return f"45+{minutes - 45}'"
+
+        # 2e mi-temps normale
+        if 60 <= minutes <= 90:
+            return f"{minutes}'"
+
+        # Temps additionnel 2e MT
+        if minutes > 90:
+            return f"90+{minutes - 90}'"
+
+        return f"{minutes}'"
 
     def __str__(self):
         return f"{self.home_team} vs {self.away_team}"
-
 
 # =====================================================
 # PÉNALITÉS DE POINTS
