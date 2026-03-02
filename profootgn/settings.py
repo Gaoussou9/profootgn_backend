@@ -9,6 +9,8 @@ import os
 from datetime import timedelta
 import dj_database_url  # Render/Postgres
 
+from django.core.cache import cache
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -365,4 +367,10 @@ LOGGING = {
         "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": True},
         "cloudinary": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
+}
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "kanousport-cache",
+    }
 }

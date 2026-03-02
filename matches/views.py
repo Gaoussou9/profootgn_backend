@@ -31,6 +31,8 @@ from players.models import Player
 from clubs.models import Club
 from collections import defaultdict
 
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 
 GOALS_REL_NAME = Goal._meta.get_field("match").remote_field.get_accessor_name()
 CARDS_REL_NAME = Card._meta.get_field("match").remote_field.get_accessor_name()
@@ -217,16 +219,58 @@ class MatchViewSet(viewsets.ModelViewSet):
         data = _augment_matches_with_clock(qs, request)
         return Response(data)
 
+    @method_decorator(cache_page(5))
     @action(detail=False, methods=["get"])
     def live(self, request):
+        qs_goals = Goal.objects.select_related("player", "club").order_by("minute", "id")
+        qs_cards = Card.objects.select_related("player", "club").order_by("minute", "id")
+
         qs = (
-            self.get_queryset()
-            .filter(status__in=["LIVE", "HT", "PAUSED"])
-            .order_by("-datetime", "-id")
+        Match.objects
+        .select_related("home_club", "away_club", "round")
+        .prefetch_related(
+            Prefetch(GOALS_REL_NAME, queryset=qs_goals),
+            Prefetch(CARDS_REL_NAME, queryset=qs_cards),
         )
+        .filter(status__in=["LIVE", "HT", "PAUSED"])
+        .order_by("-datetime", "-id")
+    )
+
         data = _augment_matches_with_clock(qs, request)
         return Response(data)
+    @method_decorator(cache_page(5))
+    @action(detail=False, methods=["get"], url_path="live-lite")
+    def live_lite(self, request):
+        qs = (
+            Match.objects
+            .filter(status__in=["LIVE", "HT", "PAUSED"])
+            .select_related("home_club", "away_club")
+            .only(
+                "id",
+                "home_score",
+                "away_score",
+                "minute",
+                "status",
+                "home_club__name",
+                "away_club__name",
+            )
+            .order_by("-datetime", "-id")
+        )
 
+        data = [
+            {
+                "id": m.id,
+                "home_name": m.home_club.name,
+                "away_name": m.away_club.name,
+                "home_score": m.home_score,
+                "away_score": m.away_score,
+                "minute": m.minute,
+                "status": m.status,
+            }
+            for m in qs
+        ]
+
+        return Response(data)
     @action(
         detail=True,
         methods=["get"],
@@ -279,6 +323,7 @@ class MatchViewSet(viewsets.ModelViewSet):
         url_path="admin/lineups/replace",
         permission_classes=[IsAdminUser],
     )
+    
     def action_replace_lineups(self, request, pk=None):
         """
         Replace the lineups for a match (admin bulk replace).
