@@ -261,8 +261,6 @@ class CompetitionPenalty(models.Model):
     def __str__(self):
         sign = "+" if self.points > 0 else ""
         return f"{self.team.name} {sign}{self.points} pts"
-
-
 # =====================================================
 # JOUEURS
 # =====================================================
@@ -305,6 +303,16 @@ class Player(models.Model):
     previous_club_2 = models.CharField(max_length=150, blank=True)
     previous_club_3 = models.CharField(max_length=150, blank=True)
 
+    # =========================
+    # STATISTIQUES
+    # =========================
+
+    matches_played = models.PositiveIntegerField(default=0)
+    goals = models.PositiveIntegerField(default=0)
+    assists = models.PositiveIntegerField(default=0)
+    yellow_cards = models.PositiveIntegerField(default=0)
+    red_cards = models.PositiveIntegerField(default=0)
+
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -319,3 +327,85 @@ class Player(models.Model):
 
     def __str__(self):
         return f"{self.name} #{self.number} ({self.club.name})"
+
+
+# =====================================================
+# BUTS
+# =====================================================
+
+class Goal(models.Model):
+
+    match = models.ForeignKey(
+        CompetitionMatch,
+        related_name="goals",
+        on_delete=models.CASCADE
+    )
+
+    team = models.ForeignKey(
+        CompetitionTeam,
+        on_delete=models.CASCADE
+    )
+
+    player = models.ForeignKey(
+        Player,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="goals_scored"
+    )
+
+    assist_player = models.ForeignKey(
+        Player,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assists_made"
+    )
+
+    minute = models.PositiveIntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.player} {self.minute}'"
+
+
+# =====================================================
+# CARTONS
+# =====================================================
+
+class Card(models.Model):
+
+    COLOR_CHOICES = (
+        ("yellow", "Jaune"),
+        ("red", "Rouge"),
+    )
+
+    match = models.ForeignKey(
+        CompetitionMatch,
+        related_name="cards",
+        on_delete=models.CASCADE
+    )
+
+    team = models.ForeignKey(
+        CompetitionTeam,
+        on_delete=models.CASCADE
+    )
+
+    player = models.ForeignKey(
+        Player,
+        on_delete=models.CASCADE,
+        related_name="cards_received"
+    )
+
+    color = models.CharField(
+        max_length=10,
+        choices=COLOR_CHOICES
+    )
+
+    minute = models.PositiveIntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.player} {self.color}"

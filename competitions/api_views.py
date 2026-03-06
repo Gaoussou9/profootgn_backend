@@ -318,6 +318,12 @@ def competition_club_players_api(request, competition_id, club_id):
                 if getattr(player, "photo", None)
                 else None
             ),
+            # 🔥 STATS
+    "matches_played": player.matches_played,
+    "goals": player.goals,
+    "assists": player.assists,
+    "yellow_cards": player.yellow_cards,
+    "red_cards": player.red_cards,
         })
 
     return Response({
@@ -335,8 +341,10 @@ def competition_club_players_api(request, competition_id, club_id):
 # =====================================================
 # DETAILS PLAYERS D’UN CLUB
 # =====================================================
+
 @api_view(["GET"])
 def competition_player_detail_api(request, competition_id, club_id, player_id):
+
     competition = get_object_or_404(
         Competition,
         id=competition_id,
@@ -373,6 +381,14 @@ def competition_player_detail_api(request, competition_id, club_id, player_id):
         "previous_club_1": player.previous_club_1,
         "previous_club_2": player.previous_club_2,
         "previous_club_3": player.previous_club_3,
+
+        # 🔥 STATISTIQUES
+        "matches_played": player.matches_played,
+        "goals": player.goals,
+        "assists": player.assists,
+        "yellow_cards": player.yellow_cards,
+        "red_cards": player.red_cards,
+
         "club": {
             "id": club.id,
             "name": club.name,

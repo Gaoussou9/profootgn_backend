@@ -274,7 +274,15 @@ def competition_club_players_view(request, competition_id, club_id):
             previous_club_1=request.POST.get("previous_club_1") or "",
             previous_club_2=request.POST.get("previous_club_2") or "",
             previous_club_3=request.POST.get("previous_club_3") or "",
-        )
+
+             # 📊 STATISTIQUES
+    matches_played=request.POST.get("matches_played") or 0,
+    goals=request.POST.get("goals") or 0,
+    assists=request.POST.get("assists") or 0,
+    yellow_cards=request.POST.get("yellow_cards") or 0,
+    red_cards=request.POST.get("red_cards") or 0,
+)
+        
 
         messages.success(request, "Joueur ajouté avec succès.")
         return redirect(request.path)
@@ -329,6 +337,12 @@ def competition_club_players_view(request, competition_id, club_id):
         player.previous_club_1 = request.POST.get("previous_club_1") or ""
         player.previous_club_2 = request.POST.get("previous_club_2") or ""
         player.previous_club_3 = request.POST.get("previous_club_3") or ""
+
+        player.matches_played = request.POST.get("matches_played") or 0
+        player.goals = request.POST.get("goals") or 0
+        player.assists = request.POST.get("assists") or 0
+        player.yellow_cards = request.POST.get("yellow_cards") or 0
+        player.red_cards = request.POST.get("red_cards") or 0
 
         if request.FILES.get("photo"):
             player.photo = request.FILES.get("photo")

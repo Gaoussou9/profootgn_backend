@@ -1,9 +1,9 @@
 from rest_framework import serializers
-from .models import Competition, CompetitionMatch
+from .models import Competition, CompetitionMatch, Player
 
 
 # =====================================================
-# LISTE DES COMPÉTITIONS (API PUBLIQUE)
+# LISTE DES COMPÉTITIONS
 # =====================================================
 
 class CompetitionListSerializer(serializers.ModelSerializer):
@@ -33,9 +33,12 @@ class CompetitionListSerializer(serializers.ModelSerializer):
 # =====================================================
 # MATCHS D’UNE COMPÉTITION
 # =====================================================
+
 class CompetitionMatchSerializer(serializers.ModelSerializer):
+
     home_team = serializers.SerializerMethodField()
     away_team = serializers.SerializerMethodField()
+
     status_label = serializers.CharField(
         source="get_status_display",
         read_only=True
@@ -53,52 +56,76 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
             "away_score",
             "status",
             "status_label",
-
-            # 🔥 OBLIGATOIRE POUR LE CHRONO
             "started_at",
             "elapsed_seconds",
         ]
-    # =========================
-    # MINUTE DISPLAY (CHRONO)
-    # =========================
-    def get_minute_display(self, obj):
-        try:
-            return obj.get_minute_display()
-        except Exception:
-            return None
 
-    # =========================
-    # TEAMS (FORMAT STABLE FRONT)
-    # =========================
     def get_home_team(self, obj):
         return self._serialize_team(obj.home_team)
 
     def get_away_team(self, obj):
         return self._serialize_team(obj.away_team)
 
-    # =========================
-    # UTILS
-    # =========================
     def _serialize_team(self, team):
+
         if not team:
             return {
                 "id": None,
                 "name": None,
-                "logo": None,
+                "logo": None
             }
+
+        request = self.context.get("request")
+
+        logo = None
+        if team.logo and hasattr(team.logo, "url"):
+            logo = request.build_absolute_uri(team.logo.url) if request else team.logo.url
 
         return {
             "id": team.id,
             "name": team.name,
-            "logo": self._get_logo_url(team),
+            "logo": logo,
         }
 
-    def _get_logo_url(self, team):
+
+# =====================================================
+# JOUEURS
+# =====================================================
+
+class PlayerSerializer(serializers.ModelSerializer):
+
+    photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Player
+        fields = [
+            "id",
+            "name",
+            "number",
+            "position",
+            "photo",
+            "age",
+            "nationality",
+            "height",
+            "previous_club_1",
+            "previous_club_2",
+            "previous_club_3",
+
+            # 📊 STATS
+            "matches_played",
+            "goals",
+            "assists",
+            "yellow_cards",
+            "red_cards",
+
+            "club",
+        ]
+
+    def get_photo(self, obj):
+
         request = self.context.get("request")
 
-        if team.logo and hasattr(team.logo, "url"):
-            if request:
-                return request.build_absolute_uri(team.logo.url)
-            return team.logo.url
+        if obj.photo and hasattr(obj.photo, "url"):
+            return request.build_absolute_uri(obj.photo.url) if request else obj.photo.url
 
         return None
