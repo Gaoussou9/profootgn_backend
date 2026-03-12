@@ -6,8 +6,8 @@ from django.http import HttpResponse
 from django.db import IntegrityError
 
 from .models import Competition, CompetitionTeam, Player
-from matches.models import Match, Round
-
+from competitions.models import CompetitionMatch as Match
+from matches.models import Round
 
 # =====================================================
 # MATCHS ADMIN (PAGE PRINCIPALE COMPÉTITION)
@@ -32,8 +32,8 @@ def competition_matches_view(request, competition_id):
 
     matches = (
         Match.objects
-        .filter(round__competition=competition)
-        .select_related("round", "home_club", "away_club")
+        .filter(competition=competition)
+        .select_related("round", "home_team", "away_team")
         .order_by("-datetime")
     )
 
@@ -42,9 +42,9 @@ def competition_matches_view(request, competition_id):
         action = request.POST.get("action")
         match_id = request.POST.get("match_id")
 
-        # =====================================================
+        # ===============================
         # AJOUT MATCH
-        # =====================================================
+        # ===============================
 
         if action == "add_match":
 
@@ -77,8 +77,8 @@ def competition_matches_view(request, competition_id):
 
             Match.objects.create(
                 round=round_obj,
-                home_club_id=home_id,
-                away_club_id=away_id,
+                home_team_id=home_id,
+                away_team_id=away_id,
                 datetime=match_datetime,
                 status="SCHEDULED",
             )
@@ -86,51 +86,48 @@ def competition_matches_view(request, competition_id):
             messages.success(request, "Match ajouté avec succès.")
             return redirect(request.path)
 
-        # =====================================================
-        # ACTIONS SUR MATCH EXISTANT
-        # =====================================================
+        # ===============================
+        # ACTIONS SUR MATCH
+        # ===============================
 
         if match_id:
 
             match = get_object_or_404(Match, id=match_id)
             now = timezone.now()
 
-            # ▶ DÉMARRER (1ère MT)
             if action == "start":
 
-                match.elapsed_seconds = 0
-                match.started_at = now
+                match.phase_offset = 0
+                match.phase_start = now
                 match.status = "LIVE"
 
-            # ⏸ PAUSE (FIN 1ère MT EXACT 45:00)
             elif action == "pause":
 
                 if match.status == "LIVE":
 
-                    # 🔥 On force la fin de 1ère mi-temps à 45:00
-                    match.elapsed_seconds = 45 * 60
-                    match.started_at = None
+                    match.phase_offset = 45 * 60
+                    match.phase_start = None
                     match.status = "HT"
 
                     match.save()
                     messages.success(request, "Mi-temps atteinte (45').")
                     return redirect(request.path)
 
-            # ▶ REPRENDRE 2E MI-TEMPS (REPART TOUJOURS À 45:00)
+                    
+
             elif action == "resume":
 
                 if match.status == "HT":
 
-                    # 🔥 RESET PROPRE 2e MT
-                    match.elapsed_seconds = 45 * 60
-                    match.started_at = now
+                    match.phase_offset = 45 * 60
+                    match.phase_start = now
                     match.status = "LIVE"
 
                     match.save()
                     messages.success(request, "2e mi-temps démarrée à 45'.")
                     return redirect(request.path)
 
-            # 🔥 SYNCHRONISER MINUTE (RETARD)
+
             elif action == "set_minute":
 
                 try:
@@ -140,33 +137,27 @@ def competition_matches_view(request, competition_id):
                     return redirect(request.path)
 
                 if minute < 0 or minute > 130:
-                    messages.error(request, "Minute hors limite (0 - 130).")
+                    messages.error(request, "Minute hors limite.")
                     return redirect(request.path)
 
-                match.elapsed_seconds = minute * 60
-                match.started_at = now
+                match.phase_offset = minute * 60
+                match.phase_start = now
                 match.status = "LIVE"
 
-                messages.success(request, f"Minute synchronisée à {minute}'.")
                 match.save()
+                messages.success(request, f"Minute synchronisée à {minute}'.")
                 return redirect(request.path)
 
-            # ⏹ FIN MATCH
             elif action == "finish":
 
-                if match.status == "LIVE" and match.started_at:
-                    elapsed = int((now - match.started_at).total_seconds())
-                    match.elapsed_seconds += elapsed
-
-                match.started_at = None
+                match.phase_start = None
                 match.status = "FT"
 
-            # 🔁 REVENIR À PRÉVU
             elif action == "scheduled":
 
                 match.status = "SCHEDULED"
-                match.started_at = None
-                match.elapsed_seconds = 0
+                match.phase_start = None
+                match.phase_offset = 0
 
             match.save()
             return redirect(request.path)

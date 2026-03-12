@@ -138,8 +138,8 @@ class CompetitionMatch(models.Model):
     home_score = models.PositiveIntegerField(default=0)
     away_score = models.PositiveIntegerField(default=0)
 
-    started_at = models.DateTimeField(null=True, blank=True)
-    elapsed_seconds = models.PositiveIntegerField(default=0)
+    phase_start = models.DateTimeField(null=True, blank=True)
+    phase_offset = models.PositiveIntegerField(default=0)
 
     status = models.CharField(
         max_length=20,
@@ -160,19 +160,6 @@ class CompetitionMatch(models.Model):
             )
         ]
 
-    # =========================
-    # CHRONO MOTEUR
-    # =========================
-
-    def get_live_seconds(self):
-        """
-        Retourne le nombre total de secondes écoulées.
-        """
-        if self.status == "LIVE" and self.started_at:
-            delta = timezone.now() - self.started_at
-            return self.elapsed_seconds + int(delta.total_seconds())
-
-        return self.elapsed_seconds
 
     # =====================================================
     # CHRONO MOTEUR
@@ -182,11 +169,13 @@ class CompetitionMatch(models.Model):
         """
         Retourne le nombre total de secondes écoulées.
         """
-        if self.status == "LIVE" and self.started_at:
-            delta = timezone.now() - self.started_at
-            return self.elapsed_seconds + int(delta.total_seconds())
+        seconds = self.phase_offset or 0
 
-        return self.elapsed_seconds
+        if self.status == "LIVE" and self.phase_start:
+            delta = timezone.now() - self.phase_start
+            seconds += int(delta.total_seconds())
+
+        return seconds
 
     def get_minute_display(self):
         """
@@ -318,7 +307,7 @@ class Player(models.Model):
 
     class Meta:
         ordering = ["number"]
-        unique_together = ("club", "number")
+        
         indexes = [
             models.Index(fields=["club", "is_active"]),
         ]

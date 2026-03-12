@@ -223,7 +223,7 @@ input, select { width:100%; padding:10px; }
           data-hs="{{ m.home_score }}"
           data-as="{{ m.away_score }}"
           data-day="{{ m.matchday }}"
-          data-status="{{ m.status }}"
+          data-status="{{ m.status|upper }}"
           data-datetime="{{ m.datetime|date:'Y-m-d\\TH:i' }}">
         <td>{{ m.datetime|date:"d/m/Y H:i" }}</td>
         <td>J{{ m.matchday }}</td>
@@ -242,6 +242,7 @@ input, select { width:100%; padding:10px; }
 
 <script>
 function updateActionButtons(status) {
+
   const pauseBtn = document.getElementById("pauseBtn");
   const resumeBtn = document.getElementById("resumeBtn");
 
@@ -249,10 +250,12 @@ function updateActionButtons(status) {
     pauseBtn.style.display = "inline-block";
     resumeBtn.style.display = "none";
   }
-  else if (status === "HT") {
+
+  else if (status === "HT" || status === "HALF_TIME") {
     pauseBtn.style.display = "none";
     resumeBtn.style.display = "inline-block";
   }
+
   else {
     pauseBtn.style.display = "inline-block";
     resumeBtn.style.display = "none";

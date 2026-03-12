@@ -73,45 +73,44 @@ def competition_matches_view(request, competition_id):
             # ▶️ DÉMARRER
             if action == "start":
                 if match.status in ["SCHEDULED", "HT"]:
-                    match.started_at = now
+                    match.phase_offset = 0
+                    match.phase_start = now
                     match.status = "LIVE"
 
             # ⏸️ PAUSE (MI-TEMPS)
             elif action == "pause":
-                if match.status == "LIVE" and match.started_at:
-                    elapsed = (now - match.started_at).total_seconds()
-                    match.elapsed_seconds += int(elapsed)
-                    match.started_at = None
+                if match.status == "LIVE":
+                    # forcer minute 45
+                    match.phase_offset = 45 * 60
+                    match.phase_start = None
                     match.status = "HT"
 
             # ▶️ REPRENDRE
             elif action == "resume":
                 if match.status == "HT":
-                    match.started_at = now
+                    match.phase_offset = 45 * 60
+                    match.phase_start = now
                     match.status = "LIVE"
 
             # ⏹️ FIN DU MATCH
             elif action == "finish":
-                if match.status == "LIVE" and match.started_at:
-                    elapsed = (now - match.started_at).total_seconds()
-                    match.elapsed_seconds += int(elapsed)
-                    match.started_at = None
-                match.status = "FT"
+                    match.phase_start = None
+                    match.status = "FT"
 
             # 📅 PROGRAMMÉ
             elif action == "scheduled":
-                match.started_at = None
-                match.elapsed_seconds = 0
+                match.phase_start = None
+                match.phase_offset = 0
                 match.status = "SCHEDULED"
 
             # 🔁 REPORTÉ
             elif action == "postponed":
-                match.started_at = None
+                match.phase_start = None
                 match.status = "POSTPONED"
 
             # 🚫 ANNULÉ
             elif action == "cancelled":
-                match.started_at = None
+                match.phase_start = None
                 match.status = "CANCELLED"
 
             # =====================

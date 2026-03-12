@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import Competition, CompetitionMatch, Player
 
 
@@ -7,6 +8,7 @@ from .models import Competition, CompetitionMatch, Player
 # =====================================================
 
 class CompetitionListSerializer(serializers.ModelSerializer):
+
     logo = serializers.SerializerMethodField()
 
     class Meta:
@@ -20,12 +22,12 @@ class CompetitionListSerializer(serializers.ModelSerializer):
         ]
 
     def get_logo(self, obj):
+
         request = self.context.get("request")
 
         if obj.logo and hasattr(obj.logo, "url"):
-            if request:
-                return request.build_absolute_uri(obj.logo.url)
-            return obj.logo.url
+            url = obj.logo.url
+            return request.build_absolute_uri(url) if request else url
 
         return None
 
@@ -44,6 +46,8 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    minute = serializers.SerializerMethodField()
+
     class Meta:
         model = CompetitionMatch
         fields = [
@@ -56,17 +60,22 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
             "away_score",
             "status",
             "status_label",
-            "started_at",
-            "elapsed_seconds",
+            "phase_start",
+            "phase_offset",
+            "minute",
         ]
 
+    # ===============================
+    # ÉQUIPES
+    # ===============================
+
     def get_home_team(self, obj):
-        return self._serialize_team(obj.home_team)
+        return self.serialize_team(obj.home_team)
 
     def get_away_team(self, obj):
-        return self._serialize_team(obj.away_team)
+        return self.serialize_team(obj.away_team)
 
-    def _serialize_team(self, team):
+    def serialize_team(self, team):
 
         if not team:
             return {
@@ -79,13 +88,36 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
 
         logo = None
         if team.logo and hasattr(team.logo, "url"):
-            logo = request.build_absolute_uri(team.logo.url) if request else team.logo.url
+            logo_url = team.logo.url
+            logo = request.build_absolute_uri(logo_url) if request else logo_url
 
         return {
             "id": team.id,
             "name": team.name,
             "logo": logo,
         }
+
+    # ===============================
+    # MINUTE LIVE
+    # ===============================
+
+    def get_minute(self, obj):
+
+        # Mi-temps
+        if obj.status == "HT":
+            return 45
+
+        # Match terminé ou pas commencé
+        if obj.status != "LIVE":
+            return None
+
+        seconds = obj.phase_offset or 0
+
+        if obj.phase_start:
+            delta = timezone.now() - obj.phase_start
+            seconds += int(delta.total_seconds())
+
+        return seconds // 60
 
 
 # =====================================================
@@ -126,6 +158,7 @@ class PlayerSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         if obj.photo and hasattr(obj.photo, "url"):
-            return request.build_absolute_uri(obj.photo.url) if request else obj.photo.url
+            url = obj.photo.url
+            return request.build_absolute_uri(url) if request else url
 
         return None
