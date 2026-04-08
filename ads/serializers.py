@@ -26,15 +26,30 @@ class AdSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
+    # 🔥 méthode réutilisable (clean code)
+    def build_media_url(self, file_field):
+        if not file_field:
+            return None
+
+        try:
+            request = self.context.get("request")
+            url = file_field.url
+
+            # ✅ prod (URL absolue)
+            if request:
+                return request.build_absolute_uri(url)
+
+            # ✅ fallback local
+            return url
+
+        except Exception:
+            return None
+
     def get_image(self, obj):
-        if obj.image:
-            return obj.image.url  # ✅ simple et fonctionne toujours
-        return None
+        return self.build_media_url(obj.image)
 
     def get_video(self, obj):
-        if obj.video:
-            return obj.video.url
-        return None
+        return self.build_media_url(obj.video)
 
 
 class AdStatSerializer(serializers.ModelSerializer):

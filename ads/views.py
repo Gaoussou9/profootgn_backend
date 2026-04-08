@@ -10,25 +10,33 @@ from .models import Ad, AdStat
 from .serializers import AdSerializer
 
 
-# 🔥 LIST ADS (INTELLIGENT)
+# 🔥 LIST ADS (INTELLIGENT + SAFE PROD)
 @api_view(["GET"])
 def list_ads(request):
     page = request.query_params.get("page")
     position = request.query_params.get("position")
-    competition_id = request.query_params.get("competition_id")
-    match_id = request.query_params.get("match_id")
-    club_id = request.query_params.get("club_id")
+
+    # 🔐 sécurisation des IDs (évite "undefined")
+    def safe_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    competition_id = safe_int(request.query_params.get("competition_id"))
+    match_id = safe_int(request.query_params.get("match_id"))
+    club_id = safe_int(request.query_params.get("club_id"))
 
     ads = Ad.objects.filter(active=True)
 
-    # 🎯 FILTRAGE PRINCIPAL
+    # 🎯 filtres principaux
     if page:
         ads = ads.filter(page=page)
 
     if position:
         ads = ads.filter(position=position)
 
-    # 🎯 CIBLAGE AVANCÉ (important business)
+    # 🎯 ciblage avancé
     targeting_filter = Q()
 
     if competition_id:
@@ -40,16 +48,23 @@ def list_ads(request):
     if club_id:
         targeting_filter |= Q(club_id=club_id)
 
-    # 🌍 fallback global (pub sans ciblage)
+    # 🌍 fallback global
     targeting_filter |= Q(
         competition_id__isnull=True,
         match_id__isnull=True,
         club_id__isnull=True
     )
 
-    ads = ads.filter(targeting_filter).distinct()
+    ads = (
+        ads
+        .filter(targeting_filter)
+        .order_by("-priority")  # 💰 sponsor en premier
+        .distinct()
+    )
 
-    serializer = AdSerializer(ads, many=True)
+    # ✅ CRITIQUE POUR PROD (images/vidéos)
+    serializer = AdSerializer(ads, many=True, context={"request": request})
+
     return Response(serializer.data)
 
 
@@ -122,7 +137,7 @@ def create_or_update_ad(request):
         }
     )
 
-    return Response(AdSerializer(ad).data)
+    return Response(AdSerializer(ad, context={"request": request}).data)
 
 
 # 📈 STATS
