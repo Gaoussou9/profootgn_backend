@@ -399,3 +399,59 @@ def competition_player_detail_api(request, competition_id, club_id, player_id):
             ),
         }
     })
+
+    from django.db.models import F
+# =====================================================
+# CLASSEMENT DES BUTEURS
+# =====================================================
+
+@api_view(["GET"])
+def competition_top_scorers_api(request, competition_id):
+    competition = get_object_or_404(
+        Competition,
+        id=competition_id,
+        is_active=True
+    )
+
+    players = (
+        Player.objects
+        .filter(
+            club__competition_id=competition.id,
+            is_active=True,
+            goals__gt=0
+        )
+        .select_related("club")
+        .order_by("-goals", "name")
+    )
+
+    data = []
+
+    for i, p in enumerate(players, start=1):
+        data.append({
+            "rank": i,
+            "id": p.id,
+            "name": p.name,
+            "goals": p.goals,
+
+            # 🔥 AJOUT MATCHS JOUÉS
+            "matches": getattr(p, "matches_played", 0),
+
+            "club": {
+                "id": p.club.id,
+                "name": p.club.name,
+                "logo": (
+                    request.build_absolute_uri(p.club.logo.url)
+                    if getattr(p.club, "logo", None)
+                    else None
+                )
+            }
+        })
+
+    return Response({
+        "competition": {
+            "id": competition.id,
+            "name": competition.name,
+            "season": competition.season,
+        },
+        "scorers": data
+    })

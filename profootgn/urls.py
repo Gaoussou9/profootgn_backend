@@ -118,7 +118,7 @@ def debug_cloudinary_upload(request):
 urlpatterns = [
     path("", root_ping, name="root"),
     path("", include("competitions.urls")),
-    path("api/", include("competitions.urls")), 
+    
 
     # ✅ Health check simple pour Render et monitoring
     path("api/health/", lambda r: JsonResponse({"status": "ok"})),
@@ -149,6 +149,7 @@ urlpatterns = [
         name="admin_players_by_club",
     ),
 
+
     # Alias (si tu as une entrée de menu personnalisée)
     path("admin/livefootgn/", admin.site.admin_view(quick_add_match_view), name="admin_livefootgn"),
 
@@ -169,6 +170,7 @@ urlpatterns = [
     path("api/", include("users.urls")),
     path("api/ads/", include("ads.urls")),
     path("admin/competitions/", include("competitions.urls")),
+    path("api/", include("competitions.api_urls")),
 
 ]
 
