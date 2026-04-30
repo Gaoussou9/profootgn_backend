@@ -421,20 +421,34 @@ def competition_top_scorers_api(request, competition_id):
             goals__gt=0
         )
         .select_related("club")
-        .order_by("-goals", "name")
+        .order_by("-goals", "-assists", "name")
     )
 
     data = []
 
     for i, p in enumerate(players, start=1):
+        goals = getattr(p, "goals", 0)
+        matches = getattr(p, "matches_played", 0)
+        assists = getattr(p, "assists", 0)
+
+        # 🔥 RATIO
+        ratio = round(goals / matches, 2) if matches > 0 else 0
+
         data.append({
             "rank": i,
             "id": p.id,
             "name": p.name,
-            "goals": p.goals,
+            "goals": goals,
+            "assists": assists,
+            "matches": matches,
+            "ratio": ratio,
 
-            # 🔥 AJOUT MATCHS JOUÉS
-            "matches": getattr(p, "matches_played", 0),
+            # 🔥 PHOTO JOUEUR
+            "photo": (
+                request.build_absolute_uri(p.photo.url)
+                if getattr(p, "photo", None)
+                else None
+            ),
 
             "club": {
                 "id": p.club.id,
