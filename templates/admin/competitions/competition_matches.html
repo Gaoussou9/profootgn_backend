@@ -24,8 +24,25 @@
   margin-bottom:20px;
 }
 
+/* 🔥 WRAPPER BOUTONS */
+.header-actions {
+  display:flex;
+  gap:10px;
+}
+
+/* Bouton Clubs */
 .btn-clubs {
   background:#3498db;
+  color:white;
+  padding:10px 16px;
+  border-radius:6px;
+  font-weight:600;
+  text-decoration:none;
+}
+
+/* 🔥 Bouton Events */
+.btn-events {
+  background:#e67e22;
   color:white;
   padding:10px 16px;
   border-radius:6px;
@@ -83,15 +100,25 @@ input, select { width:100%; padding:10px; }
 
 <div class="admin-wrap">
 
+<!-- 🔥 HEADER CORRIGÉ -->
 <div class="header-bar">
   <h1>Espace Admin — {{ competition.name }}</h1>
 
-  <a href="{% url 'competitions:admin-competition-clubs' competition.id %}"
-     class="btn-clubs">
-    ⚽ Gérer les Clubs
-  </a>
-</div>
+  <div class="header-actions">
 
+    <!-- Clubs -->
+    <a href="{% url 'competitions:admin-competition-clubs' competition.id %}"
+       class="btn-clubs">
+      ⚽ Gérer les Clubs
+    </a>
+
+    <!-- 🔥 Events -->
+   <a href="{% url 'competitions:admin_competition_quick_events' competition.id %}">
+  ⚡ Événements
+</a>
+
+  </div>
+</div>
 <div class="card">
   <h2>Ajouter / modifier un match</h2>
 
@@ -194,8 +221,8 @@ input, select { width:100%; padding:10px; }
       </button>
 
       <button name="action" value="set_minute" class="btn-start">
-  Synchroniser minute
-</button>
+        Synchroniser minute
+      </button>
 
     </div>
   </form>

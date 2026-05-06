@@ -258,12 +258,9 @@ def competition_club_matches_api(request, competition_id, club_id):
     return Response(serializer.data)
 
 
-# =====================================================
-# DÉTAIL D’UN MATCH
-# =====================================================
-
 @api_view(["GET"])
 def competition_match_detail(request, competition_id, match_id):
+
     competition = get_object_or_404(
         Competition,
         id=competition_id,
@@ -271,7 +268,11 @@ def competition_match_detail(request, competition_id, match_id):
     )
 
     match = get_object_or_404(
-        CompetitionMatch,
+        CompetitionMatch.objects.prefetch_related(
+            "goals__player",
+            "goals__assist_player",
+            "cards__player"
+        ),
         id=match_id,
         competition=competition
     )
@@ -469,3 +470,28 @@ def competition_top_scorers_api(request, competition_id):
         },
         "scorers": data
     })
+
+    # =====================================================
+# JOUEURS D’UN MATCH (🔥 IMPORTANT)
+# =====================================================
+
+@api_view(["GET"])
+def match_players_api(request, match_id):
+    match = get_object_or_404(CompetitionMatch, id=match_id)
+
+    players = Player.objects.filter(
+        club__in=[match.home_team, match.away_team],
+        is_active=True
+    ).select_related("club")
+
+    data = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "club_id": p.club.id,
+            "club_name": p.club.name,
+        }
+        for p in players
+    ]
+
+    return Response(data)

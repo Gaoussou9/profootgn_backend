@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Competition, CompetitionMatch, Player
+from .models import Competition, CompetitionMatch, Player, Goal, Card
 
 
 # =====================================================
@@ -22,7 +22,6 @@ class CompetitionListSerializer(serializers.ModelSerializer):
         ]
 
     def get_logo(self, obj):
-
         request = self.context.get("request")
 
         if obj.logo and hasattr(obj.logo, "url"):
@@ -32,6 +31,100 @@ class CompetitionListSerializer(serializers.ModelSerializer):
         return None
 
 
+# =====================================================
+# 🔥 GOALS
+# =====================================================
+
+class GoalSerializer(serializers.ModelSerializer):
+
+    player_name = serializers.CharField(source="player.name", read_only=True)
+    assist_name = serializers.CharField(source="assist_player.name", read_only=True)
+
+    player_photo = serializers.SerializerMethodField()
+
+    team = serializers.SerializerMethodField()
+
+    club_id = serializers.IntegerField(source="team.id", read_only=True)
+    player_id = serializers.IntegerField(source="player.id", read_only=True)
+
+    goal_type = serializers.CharField(
+    source="type",
+    read_only=True
+)
+
+    goal_type_label = serializers.CharField(
+    source="get_type_display",
+    read_only=True
+)
+
+    class Meta:
+        model = Goal
+        fields = [
+            "id",
+            "minute",
+
+            "goal_type",
+            "goal_type_label",
+
+            "team",
+
+            "player_name",
+            "assist_name",
+            "player_photo",
+
+            "club_id",
+            "player_id",
+        ]
+
+    def get_team(self, obj):
+        return obj.team.id if obj.team else None
+
+    def get_player_photo(self, obj):
+        request = self.context.get("request")
+
+        if obj.player and obj.player.photo:
+            url = obj.player.photo.url
+            return request.build_absolute_uri(url) if request else url
+
+        return None
+# =====================================================
+# 🔥 CARDS
+# =====================================================
+
+class CardSerializer(serializers.ModelSerializer):
+
+    player_name = serializers.CharField(source="player.name", read_only=True)
+    player_photo = serializers.SerializerMethodField()
+    reason_label = serializers.CharField(source="get_reason_display", read_only=True)
+    team = serializers.SerializerMethodField()  # ✅ ICI
+    club_id = serializers.IntegerField(source="team.id", read_only=True)
+    player_id = serializers.IntegerField(source="player.id", read_only=True)
+    
+
+    class Meta:
+        model = Card
+        fields = [
+            "id",
+            "minute",
+            "color",
+            "reason",
+            "reason_label",
+            "team",  # ✅ ICI
+            "player_name",
+            "player_photo",
+            "club_id",
+            "player_id",
+        ]
+
+    def get_team(self, obj):
+        return obj.team.id if obj.team else None
+
+    def get_player_photo(self, obj):
+        request = self.context.get("request")
+        if obj.player and obj.player.photo:
+            url = obj.player.photo.url
+            return request.build_absolute_uri(url) if request else url
+        return None
 # =====================================================
 # MATCHS D’UNE COMPÉTITION
 # =====================================================
@@ -48,6 +141,10 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
 
     minute = serializers.SerializerMethodField()
 
+    # 🔥 AJOUT IMPORTANT
+    goals = GoalSerializer(many=True, read_only=True)
+    cards = CardSerializer(many=True, read_only=True)
+
     class Meta:
         model = CompetitionMatch
         fields = [
@@ -63,6 +160,10 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
             "phase_start",
             "phase_offset",
             "minute",
+
+            # 🔥 AJOUT
+            "goals",
+            "cards",
         ]
 
     # ===============================
@@ -103,11 +204,9 @@ class CompetitionMatchSerializer(serializers.ModelSerializer):
 
     def get_minute(self, obj):
 
-        # Mi-temps
         if obj.status == "HT":
             return 45
 
-        # Match terminé ou pas commencé
         if obj.status != "LIVE":
             return None
 

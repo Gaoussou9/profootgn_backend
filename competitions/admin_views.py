@@ -9,6 +9,8 @@ from .models import Competition, CompetitionTeam, Player
 from competitions.models import CompetitionMatch as Match
 from matches.models import Round
 
+from competitions.models import Goal, Card
+from competitions.models import Competition
 # =====================================================
 # MATCHS ADMIN (PAGE PRINCIPALE COMPÉTITION)
 # =====================================================
@@ -387,4 +389,359 @@ def competition_club_players_view(request, competition_id, club_id):
             "players": players,
             "edit_player": edit_player,
         },
+    )
+@staff_member_required
+def admin_quick_events_view(request, competition_id):
+
+    competition = get_object_or_404(Competition, id=competition_id)
+
+    selected_match_id = request.GET.get("match") or request.POST.get("match_id")
+    selected_match = None
+
+    if selected_match_id:
+        selected_match = get_object_or_404(
+            Match,
+            id=selected_match_id,
+            competition=competition
+        )
+
+    matches = Match.objects.filter(
+        competition=competition
+    ).select_related("home_team", "away_team").order_by("-id")
+
+    players = []
+    if selected_match:
+        players = Player.objects.filter(
+            club__in=[selected_match.home_team, selected_match.away_team],
+            is_active=True
+        )
+
+    # ======================
+    # POST
+    # ======================
+    if request.method == "POST":
+
+        match_id = request.POST.get("match_id")
+
+        if not match_id:
+            return redirect(request.path)
+
+        match = get_object_or_404(Match, id=match_id)
+
+        # ======================
+        # ACTIONS TABLEAU
+        # ======================
+
+        if request.POST.get("delete_goal_id"):
+            Goal.objects.filter(id=request.POST["delete_goal_id"]).delete()
+            return redirect(f"{request.path}?match={match.id}")
+
+        if request.POST.get("delete_card_id"):
+            Card.objects.filter(id=request.POST["delete_card_id"]).delete()
+            return redirect(f"{request.path}?match={match.id}")
+
+        if request.POST.get("update_goal_id"):
+            goal = get_object_or_404(Goal, id=request.POST["update_goal_id"])
+
+            goal.minute = request.POST.get("minute")
+            goal.player_id = request.POST.get("player_id")
+
+            assist_player_id = request.POST.get("assist_player_id")
+            if assist_player_id:
+                try:
+                    goal.assist_player = Player.objects.get(id=int(assist_player_id))
+                except:
+                    goal.assist_player = None
+            else:
+                goal.assist_player = None
+
+            goal.type = request.POST.get("goal_type", "normal")
+            goal.save()
+
+            return redirect(f"{request.path}?match={match.id}")
+
+        if request.POST.get("update_card_id"):
+            card = get_object_or_404(Card, id=request.POST["update_card_id"])
+
+            minute = request.POST.get("minute")
+            player_id = request.POST.get("player_id")
+            color = request.POST.get("color")
+
+            try:
+                if minute:
+                    card.minute = int(minute)
+            except:
+                pass
+
+            if player_id:
+                try:
+                    player = Player.objects.get(id=int(player_id))
+                    card.player = player
+                    card.club = player.club
+                except:
+                    pass
+
+            if color in ["yellow", "red"]:
+                card.color = color
+
+            card.reason = request.POST.get("card_reason", "foul")
+
+            card.save()
+            return redirect(f"{request.path}?match={match.id}")
+
+        # ======================
+        # AJOUT EVENTS
+        # ======================
+
+        goals_text = request.POST.get("goals", "")
+        cards_text = request.POST.get("cards", "")
+
+        # ---------- GOALS (🔥 CORRIGÉ) ----------
+        for line in goals_text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Exemple attendu :
+            # Abdoulaye (Ferran) 12 [penalty]
+            # Abdoulaye 45 [freekick]
+            # Abdoulaye 90 [own_goal]
+
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+
+            # 🔥 TYPE
+            goal_type = "normal"
+            if "[" in line and "]" in line:
+                goal_type = line.split("[")[-1].replace("]", "").strip()
+
+            # 🔥 CLEAN LINE
+            clean_line = line.split("[")[0].strip()
+
+            clean_parts = clean_line.split()
+
+            try:
+                minute = int(clean_parts[-1])
+            except:
+                continue
+
+            content = " ".join(clean_parts[:-1])
+
+            scorer_name = None
+            assist_name = None
+
+            if "(" in content and ")" in content:
+                scorer_name = content.split("(")[0].strip()
+                assist_name = content.split("(")[1].replace(")", "").strip()
+            else:
+                scorer_name = content.strip()
+
+            player = Player.objects.filter(
+                name__icontains=scorer_name,
+                club__in=[match.home_team, match.away_team],
+                is_active=True
+            ).first()
+
+            assist_player = None
+            if assist_name:
+                assist_player = Player.objects.filter(
+                    name__icontains=assist_name,
+                    club__in=[match.home_team, match.away_team],
+                    is_active=True
+                ).first()
+
+            if player:
+                Goal.objects.create(
+                    match=match,
+                    player=player,
+                    team=player.club,
+                    minute=minute,
+                    assist_player=assist_player,
+                    type=goal_type  # 🔥 FIX ICI
+                )
+
+        # ---------- CARDS ----------
+        for line in cards_text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+
+            try:
+                minute = int(parts[-2])
+            except:
+                continue
+
+            color_code = parts[-3]
+
+            reason = "foul"
+            if "[" in line and "]" in line:
+                reason = line.split("[")[-1].replace("]", "").strip()
+
+            clean_line = line.split("[")[0].strip()
+            clean_parts = clean_line.split()
+
+            player_name = " ".join(clean_parts[:-2])
+
+            player = Player.objects.filter(
+                name__icontains=player_name,
+                club__in=[match.home_team, match.away_team],
+                is_active=True
+            ).first()
+
+            if player:
+                Card.objects.create(
+                    match=match,
+                    player=player,
+                    team=player.club,
+                    minute=minute,
+                    color="red" if color_code == "R" else "yellow",
+                    reason=reason
+                )
+
+        messages.success(request, "Events ajoutés.")
+        return redirect(f"{request.path}?match={match.id}")
+
+    # ======================
+    # LOAD DATA
+    # ======================
+    goals = []
+    cards = []
+
+    if selected_match:
+        goals = selected_match.goals.all().select_related("player", "team", "assist_player")
+        cards = selected_match.cards.all().select_related("player", "team")
+
+    return render(
+        request,
+        "admin/competitions/quick_events.html",
+        {
+            "competition": competition,
+            "matches": matches,
+            "selected_match": selected_match,
+            "players": players,
+            "goals": goals,
+            "cards": cards,
+        },
+    )
+@staff_member_required
+def delete_goal_view(request, competition_id, goal_id):
+    competition = get_object_or_404(Competition, id=competition_id)
+
+    goal = get_object_or_404(
+        Goal,
+        id=goal_id,
+        match__competition=competition
+    )
+
+    match_id = goal.match.id
+    goal.delete()
+
+    messages.success(request, "But supprimé.")
+
+    return redirect(f"/admin/competitions/{competition_id}/quick-events/?match={match_id}")
+
+
+@staff_member_required
+def delete_card_view(request, competition_id, card_id):
+    competition = get_object_or_404(Competition, id=competition_id)
+
+    card = get_object_or_404(
+        Card,
+        id=card_id,
+        match__competition=competition
+    )
+
+    match_id = card.match.id
+    card.delete()
+
+    messages.success(request, "Carton supprimé.")
+
+    return redirect(f"/admin/competitions/{competition_id}/quick-events/?match={match_id}")
+
+
+@staff_member_required
+def update_goal_view(request, competition_id, goal_id):
+    competition = get_object_or_404(Competition, id=competition_id)
+
+    goal = get_object_or_404(
+        Goal,
+        id=goal_id,
+        match__competition=competition
+    )
+
+    if request.method == "POST":
+
+        minute = request.POST.get("minute")
+        player_id = request.POST.get("player_id")  # 🔥 CORRECTION
+
+        # Minute
+        try:
+            goal.minute = int(minute)
+        except (ValueError, TypeError):
+            messages.error(request, "Minute invalide.")
+            return redirect(
+                f"/admin/competitions/{competition_id}/quick-events/?match={goal.match.id}"
+            )
+
+        # Joueur
+        if player_id:
+            player = Player.objects.filter(id=player_id).first()
+            if player:
+                goal.player = player
+                goal.team = player.club
+
+        goal.save()
+        messages.success(request, "But modifié.")
+
+    return redirect(
+        f"/admin/competitions/{competition_id}/quick-events/?match={goal.match.id}"
+    )
+
+
+@staff_member_required
+def update_card_view(request, competition_id, card_id):
+    competition = get_object_or_404(Competition, id=competition_id)
+
+    card = get_object_or_404(
+        Card,
+        id=card_id,
+        match__competition=competition
+    )
+
+    if request.method == "POST":
+
+        minute = request.POST.get("minute")
+        player_id = request.POST.get("player_id")  # 🔥 CORRECTION
+        color = request.POST.get("color")
+
+        # Minute
+        try:
+            card.minute = int(minute)
+        except (ValueError, TypeError):
+            messages.error(request, "Minute invalide.")
+            return redirect(
+                f"/admin/competitions/{competition_id}/quick-events/?match={card.match.id}"
+            )
+
+        # Joueur
+        if player_id:
+            player = Player.objects.filter(id=player_id).first()
+            if player:
+                card.player = player
+                card.club = player.club
+
+        # Couleur
+        if color in ["yellow", "red"]:
+            card.color = color
+
+        card.save()
+        messages.success(request, "Carton modifié.")
+
+    return redirect(
+        f"/admin/competitions/{competition_id}/quick-events/?match={card.match.id}"
     )

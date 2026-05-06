@@ -1,0 +1,459 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+
+<style>
+.container { max-width: 900px; margin: auto; padding: 20px; }
+.card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.08); margin-bottom: 20px; }
+label { font-weight: 600; display: block; margin-bottom: 6px; }
+select, input, textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 12px; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+
+button {
+  background: #e67e22;
+  color: white;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+}
+button:hover { background: #d35400; }
+
+.small-btn { padding: 8px 10px; font-size: 13px; }
+</style>
+
+<div class="container">
+  <div class="card">
+    <h2>⚡ Events rapides</h2>
+
+    <form method="post">
+      {% csrf_token %}
+
+      <!-- MATCH -->
+      <label>Match :</label>
+      <select id="matchSelect" name="match_id" required>
+        <option value="">-- Sélectionne un match --</option>
+        {% for m in matches %}
+          <option 
+            value="{{ m.id }}"
+            data-home="{{ m.home_team.id }}"
+            data-away="{{ m.away_team.id }}"
+            data-home-name="{{ m.home_team.name }}"
+            data-away-name="{{ m.away_team.name }}"
+          >
+            J{{ m.matchday }} — {{ m.home_team.name }} vs {{ m.away_team.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <!-- CLUB -->
+      <label>Club concerné :</label>
+      <select id="clubSelect" name="club_id" required>
+        <option value="">-- Sélectionne un club --</option>
+      </select>
+
+      <!-- BUTS -->
+      <div class="card">
+        <h3>⚽ Buts</h3>
+
+        <div class="row">
+          <select id="goalPlayer">
+            <option value="">-- Buteur --</option>
+          </select>
+
+          <input type="number" id="goalMinute" placeholder="Minute">
+
+          <select id="goalAssist">
+  <option value="">-- Passeur --</option>
+</select>
+
+<select id="goalType" name="goal_type">
+  <option value="normal">But normal</option>
+  <option value="penalty">Pénalty</option>
+  <option value="freekick">Coup franc</option>
+  <option value="own_goal">CSC</option>
+</select>
+        </div>
+
+        <button type="button" class="small-btn" onclick="addGoal()">Ajouter</button>
+
+        <textarea name="goals" id="goalsText" rows="5">
+{{ existing_goals|default:"" }}
+        </textarea>
+      </div>
+
+      <!-- CARTONS -->
+      <div class="card">
+        <h3>🟨 Cartons</h3>
+
+        <div class="row">
+          <select id="cardPlayer">
+            <option value="">-- Joueur --</option>
+          </select>
+
+          <input type="number" id="cardMinute" placeholder="Minute">
+
+          <select id="cardType">
+  <option value="Y">Jaune</option>
+  <option value="R">Rouge</option>
+</select>
+
+<select id="cardReason">
+  <option value="foul">Faute</option>
+  <option value="dissent">Contestations</option>
+  <option value="simulation">Simulation</option>
+  <option value="violence">Violence</option>
+  <option value="other">Autre</option>
+</select>
+        </div>
+
+        <button type="button" class="small-btn" onclick="addCard()">Ajouter</button>
+
+        <textarea name="cards" id="cardsText" rows="5">
+{{ existing_cards|default:"" }}
+        </textarea>
+      </div>
+
+      <button type="submit" name="action" value="save_events">
+        🔥 Enregistrer les événements
+      </button>
+
+    </form>
+  </div>
+</div>
+
+<script>
+let playersData = [];
+
+// MATCH CHANGE
+document.getElementById("matchSelect").addEventListener("change", async function () {
+
+  const selected = this.options[this.selectedIndex];
+
+  if (!selected.value) return;
+
+  const homeId = selected.dataset.home;
+  const awayId = selected.dataset.away;
+
+  const homeName = selected.dataset.homeName;
+  const awayName = selected.dataset.awayName;
+
+  const matchId = this.value;
+
+  // CLUBS
+  const clubSelect = document.getElementById("clubSelect");
+  clubSelect.innerHTML = `
+    <option value="">-- Sélectionne un club --</option>
+    <option value="${homeId}">${homeName}</option>
+    <option value="${awayId}">${awayName}</option>
+  `;
+
+  try {
+    const res = await fetch(`/api/matches/${matchId}/players/`);
+
+    if (!res.ok) throw new Error("Erreur API joueurs");
+
+    playersData = await res.json();
+  } catch (err) {
+    console.error(err);
+    playersData = [];
+  }
+});
+
+// CLUB CHANGE
+document.getElementById("clubSelect").addEventListener("change", function () {
+
+  const clubId = this.value;
+
+  const selects = ["goalPlayer", "goalAssist", "cardPlayer"];
+
+  selects.forEach(id => {
+    document.getElementById(id).innerHTML =
+      `<option value="">-- Joueur --</option>`;
+  });
+
+  if (!clubId) return;
+
+  playersData
+    .filter(p => String(p.club_id) === String(clubId))
+    .forEach(p => {
+      selects.forEach(id => {
+        document.getElementById(id).innerHTML +=
+          `<option value="${p.name}">${p.name}</option>`;
+      });
+    });
+});
+
+// ADD GOAL
+function addGoal() {
+  const player = document.getElementById("goalPlayer").value;
+  const minute = document.getElementById("goalMinute").value;
+  const assist = document.getElementById("goalAssist").value;
+  const type = document.getElementById("goalType").value;
+
+  if (!player || !minute) {
+    alert("Remplis joueur + minute");
+    return;
+  }
+
+  const textarea = document.getElementById("goalsText");
+
+  let line = `${player}`;
+
+  if (assist) {
+    line += ` (${assist})`;
+  }
+
+  line += ` ${minute}`;
+
+  if (type !== "normal") {
+    line += ` [${type}]`;
+  }
+
+  textarea.value += line + "\n";
+
+  document.getElementById("goalMinute").value = "";
+  document.getElementById("goalAssist").value = "";
+}
+
+// ADD CARD
+function addCard() {
+  const player = document.getElementById("cardPlayer").value;
+  const minute = document.getElementById("cardMinute").value;
+  const type = document.getElementById("cardType").value;
+  const reason = document.getElementById("cardReason").value;
+
+  if (!player || !minute) {
+    alert("Remplis joueur + minute");
+    return;
+  }
+
+  const textarea = document.getElementById("cardsText");
+
+  textarea.value += `${player} ${type} ${minute} [${reason}]\n`;
+
+  document.getElementById("cardMinute").value = "";
+}
+
+</script>
+{% if selected_match %}
+<div class="container">
+  <div class="card">
+
+    <h2>📊 Événements enregistrés</h2>
+
+    <!-- ⚽ BUTS -->
+    <h3>⚽ Buts</h3>
+
+    {% if goals %}
+    <table style="width:100%;border-collapse:collapse;">
+      <tr>
+        <th>#</th>
+        <th>Minute</th>
+        <th>Joueur</th>
+        <th>Action</th>
+      </tr>
+
+      {% for g in goals %}
+<tr>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <input
+      type="hidden"
+      name="match_id"
+      value="{{ selected_match.id }}"
+    >
+
+    <!-- INDEX -->
+    <td>
+      {{ forloop.counter }}
+    </td>
+
+    <!-- MINUTE -->
+    <td>
+      <input
+        type="number"
+        name="minute"
+        value="{{ g.minute }}"
+      >
+    </td>
+
+    <!-- JOUEUR -->
+    <td>
+
+      <!-- BUTEUR -->
+      <select name="player_id">
+
+        {% for p in players %}
+          <option
+            value="{{ p.id }}"
+            {% if g.player and p.id == g.player.id %}selected{% endif %}
+          >
+            {{ p.name }} ({{ p.club.name }})
+          </option>
+        {% endfor %}
+
+      </select>
+
+      <!-- PASSEUR -->
+      <select
+        name="assist_player_id"
+        style="margin-top:5px;"
+      >
+
+        <option value="">
+          -- Passeur --
+        </option>
+
+        {% for p in players %}
+          <option
+            value="{{ p.id }}"
+            {% if g.assist_player and p.id == g.assist_player.id %}selected{% endif %}
+          >
+            {{ p.name }}
+          </option>
+        {% endfor %}
+
+      </select>
+
+      <!-- TYPE -->
+      <select
+        name="goal_type"
+        style="margin-top:5px;"
+      >
+
+        <option
+          value="normal"
+          {% if g.goal_type == "normal" %}selected{% endif %}
+        >
+          But normal
+        </option>
+
+        <option
+          value="penalty"
+          {% if g.goal_type == "penalty" %}selected{% endif %}
+        >
+          Penalty
+        </option>
+
+        <option
+          value="freekick"
+          {% if g.goal_type == "freekick" %}selected{% endif %}
+        >
+          Coup franc
+        </option>
+
+        <option
+          value="own_goal"
+          {% if g.goal_type == "own_goal" %}selected{% endif %}
+        >
+          CSC
+        </option>
+
+      </select>
+
+    </td>
+
+    <!-- ACTIONS -->
+    <td>
+
+      <button
+        type="submit"
+        name="update_goal_id"
+        value="{{ g.id }}"
+      >
+        💾
+      </button>
+
+      <button
+        type="submit"
+        name="delete_goal_id"
+        value="{{ g.id }}"
+        style="background:red;"
+      >
+        ❌
+      </button>
+
+    </td>
+
+  </form>
+
+</tr>
+{% endfor %}
+    </table>
+    {% else %}
+      <p>Aucun but</p>
+    {% endif %}
+
+
+    <!-- 🟨 CARTONS -->
+    <h3>🟨 Cartons</h3>
+
+    {% if cards %}
+    <table style="width:100%;border-collapse:collapse;">
+      <tr>
+        <th>#</th>
+        <th>Minute</th>
+        <th>Joueur</th>
+        <th>Couleur</th>
+        <th>Action</th>
+      </tr>
+
+      {% for c in cards %}
+      <tr>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="match_id" value="{{ selected_match.id }}">
+
+          <td>{{ forloop.counter }}</td>
+
+          <td>
+            <input type="number" name="minute" value="{{ c.minute }}">
+          </td>
+
+          <td>
+            <select name="player_id">
+              {% for p in players %}
+                <option value="{{ p.id }}"
+  {% if c.player_id == p.id %}selected{% endif %}>
+                  {{ p.name }} ({{ p.club.name }})
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+
+          <td>
+  <select name="color">
+    <option value="yellow" {% if c.color == "yellow" %}selected{% endif %}>Jaune</option>
+    <option value="red" {% if c.color == "red" %}selected{% endif %}>Rouge</option>
+  </select>
+
+  <select name="card_reason">
+    <option value="foul" {% if c.reason == "Faute" %}selected{% endif %}>Faute</option>
+    <option value="protest" {% if c.reason == "Protestation" %}selected{% endif %}>Contestations</option>
+    <option value="time_wasting" {% if c.reason == "Perte de temps" %}selected{% endif %}>Temps</option>
+    <option value="violence" {% if c.reason == "violence" %}selected{% endif %}>Violence</option>
+  </select>
+</td>
+          <td>
+            <button type="submit" name="update_card_id" value="{{ c.id }}">💾</button>
+            <button type="submit" name="delete_card_id" value="{{ c.id }}" style="background:red;">❌</button>
+          </td>
+
+        </form>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+      <p>Aucun carton</p>
+    {% endif %}
+
+  </div>
+</div>
+{% endif %}
+{% endblock %}

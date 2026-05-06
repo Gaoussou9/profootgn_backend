@@ -104,6 +104,7 @@ class CompetitionTeam(models.Model):
 # =====================================================
 
 class CompetitionMatch(models.Model):
+
     STATUS_CHOICES = (
         ("SCHEDULED", "Programmé"),
         ("LIVE", "En cours"),
@@ -120,6 +121,33 @@ class CompetitionMatch(models.Model):
         db_index=True
     )
 
+    # PHASE DE COMPÉTITION (ex: Phase de groupes, Quart de finale)
+    stage = models.ForeignKey(
+        "CompetitionStage",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matches"
+    )
+
+    # GROUPE (ex: Groupe A, Groupe B)
+    group = models.ForeignKey(
+        "CompetitionGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matches"
+    )
+
+    # ROUND / JOURNÉE (J1, Quart, Demi...)
+    round = models.ForeignKey(
+        "CompetitionRound",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matches"
+    )
+
     home_team = models.ForeignKey(
         CompetitionTeam,
         on_delete=models.CASCADE,
@@ -132,12 +160,15 @@ class CompetitionMatch(models.Model):
         related_name="away_matches"
     )
 
+    # utilisé pour les championnats
     matchday = models.PositiveIntegerField(default=1)
+
     datetime = models.DateTimeField()
 
     home_score = models.PositiveIntegerField(default=0)
     away_score = models.PositiveIntegerField(default=0)
 
+    # moteur du chrono live
     phase_start = models.DateTimeField(null=True, blank=True)
     phase_offset = models.PositiveIntegerField(default=0)
 
@@ -148,6 +179,18 @@ class CompetitionMatch(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["datetime"]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(home_team=models.F("away_team")),
+                name="competition_match_home_neq_away"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.home_team} vs {self.away_team}"
 
     class Meta:
         ordering = ["matchday", "datetime"]
@@ -324,6 +367,13 @@ class Player(models.Model):
 
 class Goal(models.Model):
 
+    GOAL_TYPES = (
+        ("normal", "Normal"),
+        ("penalty", "Pénalty"),
+        ("freekick", "Coup franc"),
+        ("own_goal", "CSC"),
+    )
+
     match = models.ForeignKey(
         CompetitionMatch,
         related_name="goals",
@@ -353,10 +403,17 @@ class Goal(models.Model):
 
     minute = models.PositiveIntegerField()
 
+    # 🔥 NOUVEAU CHAMP
+    type = models.CharField(
+        max_length=20,
+        choices=GOAL_TYPES,
+        default="normal"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.player} {self.minute}'"
+        return f"{self.player} {self.minute}' ({self.get_type_display()})"
 
 
 # =====================================================
@@ -369,6 +426,15 @@ class Card(models.Model):
         ("yellow", "Jaune"),
         ("red", "Rouge"),
     )
+
+    REASON_CHOICES = (
+    ("foul", "Faute"),
+    ("protest", "Contestations"),
+    ("simulation", "Simulation"),
+    ("time_wasting", "Perte de temps"),
+    ("violence", "Violence"),
+    ("other", "Autre"),
+)
 
     match = models.ForeignKey(
         CompetitionMatch,
@@ -394,7 +460,65 @@ class Card(models.Model):
 
     minute = models.PositiveIntegerField()
 
+    reason = models.CharField(
+        max_length=20,
+        choices=REASON_CHOICES,
+        default="foul"   # 🔥 clé anglaise
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.player} {self.color}"
+        return f"{self.player} {self.color} ({self.get_reason_display()})"
+
+# =====================================================
+# AUTRES MODELES
+# =====================================================
+
+class CompetitionStage(models.Model):
+
+    competition = models.ForeignKey(
+        Competition,
+        on_delete=models.CASCADE,
+        related_name="stages"
+    )
+
+    name = models.CharField(max_length=100)
+
+    order = models.PositiveIntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.competition.name} - {self.name}"
+
+
+class CompetitionGroup(models.Model):
+
+    stage = models.ForeignKey(
+        CompetitionStage,
+        on_delete=models.CASCADE,
+        related_name="groups"
+    )
+
+    name = models.CharField(max_length=10)
+
+    def __str__(self):
+        return f"{self.stage.name} {self.name}"
+
+
+class CompetitionRound(models.Model):
+
+    stage = models.ForeignKey(
+        CompetitionStage,
+        on_delete=models.CASCADE,
+        related_name="rounds"
+    )
+
+    name = models.CharField(max_length=50)
+
+    number = models.PositiveIntegerField()
+
+    def __str__(self):
+        return f"{self.stage.name} - {self.name}"
+        
+
+                         

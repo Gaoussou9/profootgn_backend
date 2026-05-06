@@ -7,16 +7,19 @@ from .models import (
     CompetitionTeam,
     CompetitionMatch,
     CompetitionPenalty,
+    CompetitionRound,
+    CompetitionStage,
 )
+
+from .services.cup_generator import generate_cup_bracket
+
 
 # =====================================================
 # UTIL : LOGO PREVIEW
 # =====================================================
 
 def team_logo(team, size=26):
-    """
-    Affiche le logo + nom d'une équipe de compétition
-    """
+
     if not team:
         return "—"
 
@@ -32,10 +35,11 @@ def team_logo(team, size=26):
 
 
 # =====================================================
-# INLINE : ÉQUIPES DE LA COMPÉTITION
+# INLINE : ÉQUIPES
 # =====================================================
 
 class CompetitionTeamInline(admin.TabularInline):
+
     model = CompetitionTeam
     extra = 1
 
@@ -49,10 +53,6 @@ class CompetitionTeamInline(admin.TabularInline):
     )
 
     readonly_fields = ("logo_preview",)
-    show_change_link = True
-
-    verbose_name = "Équipe de la compétition"
-    verbose_name_plural = "Équipes de la compétition"
 
     def logo_preview(self, obj):
         return team_logo(obj, size=22)
@@ -61,10 +61,11 @@ class CompetitionTeamInline(admin.TabularInline):
 
 
 # =====================================================
-# INLINE : PÉNALITÉS DE POINTS
+# INLINE : PÉNALITÉS
 # =====================================================
 
 class CompetitionPenaltyInline(admin.TabularInline):
+
     model = CompetitionPenalty
     extra = 0
 
@@ -78,9 +79,6 @@ class CompetitionPenaltyInline(admin.TabularInline):
     readonly_fields = ("created_at",)
     autocomplete_fields = ("team",)
 
-    verbose_name = "Pénalité de points"
-    verbose_name_plural = "Pénalités de points"
-
 
 # =====================================================
 # ADMIN : COMPÉTITION
@@ -88,6 +86,7 @@ class CompetitionPenaltyInline(admin.TabularInline):
 
 @admin.register(Competition)
 class CompetitionAdmin(admin.ModelAdmin):
+
     list_display = (
         "name",
         "season",
@@ -99,7 +98,9 @@ class CompetitionAdmin(admin.ModelAdmin):
     )
 
     list_filter = ("type", "category", "season", "is_active")
+
     search_fields = ("name", "short_name")
+
     prepopulated_fields = {"slug": ("name",)}
 
     inlines = [
@@ -107,11 +108,18 @@ class CompetitionAdmin(admin.ModelAdmin):
         CompetitionPenaltyInline,
     ]
 
+
+    # =================================================
+    # BOUTON MATCHS
+    # =================================================
+
     def manage_matches(self, obj):
+
         url = reverse(
             "competitions:competition_matches",
             args=[obj.id]
         )
+
         return format_html(
             '<a class="button" href="{}">Gérer les matchs</a>',
             url
@@ -120,12 +128,50 @@ class CompetitionAdmin(admin.ModelAdmin):
     manage_matches.short_description = "Matchs"
 
 
+    # =================================================
+    # ACTION : GÉNÉRER COUPE
+    # =================================================
+
+    actions = ["generate_cup"]
+
+    def generate_cup(self, request, queryset):
+
+        generated = 0
+
+        for competition in queryset:
+
+            if competition.type != "cup":
+                continue
+
+            try:
+                generate_cup_bracket(competition)
+                generated += 1
+
+            except Exception as e:
+
+                self.message_user(
+                    request,
+                    f"Erreur pour {competition.name}: {e}",
+                    level="error"
+                )
+
+        if generated:
+
+            self.message_user(
+                request,
+                f"{generated} coupe(s) générée(s) avec succès."
+            )
+
+    generate_cup.short_description = "⚽ Générer automatiquement la coupe"
+
+
 # =====================================================
-# ADMIN : ÉQUIPE DE COMPÉTITION
+# ADMIN : ÉQUIPE
 # =====================================================
 
 @admin.register(CompetitionTeam)
 class CompetitionTeamAdmin(admin.ModelAdmin):
+
     list_display = (
         "logo_preview",
         "name",
@@ -136,7 +182,9 @@ class CompetitionTeamAdmin(admin.ModelAdmin):
     )
 
     list_filter = ("competition", "is_active")
+
     search_fields = ("name", "competition__name")
+
     autocomplete_fields = ("competition",)
 
     readonly_fields = ("logo_preview",)
@@ -148,11 +196,12 @@ class CompetitionTeamAdmin(admin.ModelAdmin):
 
 
 # =====================================================
-# ADMIN : MATCH DE COMPÉTITION
+# ADMIN : MATCH
 # =====================================================
 
 @admin.register(CompetitionMatch)
 class CompetitionMatchAdmin(admin.ModelAdmin):
+
     list_display = (
         "competition",
         "matchday",
@@ -174,7 +223,8 @@ class CompetitionMatchAdmin(admin.ModelAdmin):
         "competition__name",
     )
 
-    ordering = ("matchday", "datetime")
+    ordering = ("datetime",)
+
     readonly_fields = ("competition",)
 
     def home_team_display(self, obj):
@@ -192,11 +242,12 @@ class CompetitionMatchAdmin(admin.ModelAdmin):
 
 
 # =====================================================
-# ADMIN : PÉNALITÉS (ACCÈS DIRECT)
+# ADMIN : PÉNALITÉS
 # =====================================================
 
 @admin.register(CompetitionPenalty)
 class CompetitionPenaltyAdmin(admin.ModelAdmin):
+
     list_display = (
         "competition",
         "team",
@@ -206,7 +257,54 @@ class CompetitionPenaltyAdmin(admin.ModelAdmin):
     )
 
     list_filter = ("competition",)
+
     search_fields = ("team__name", "competition__name", "reason")
+
     autocomplete_fields = ("competition", "team")
+
     readonly_fields = ("created_at",)
 
+
+# =====================================================
+# ADMIN : ROUNDS
+# =====================================================
+
+@admin.register(CompetitionRound)
+class CompetitionRoundAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "id",
+        "name",
+    )
+
+# =====================================================
+# ADMIN : STAGES
+# =====================================================
+
+@admin.register(CompetitionStage)
+class CompetitionStageAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "name",
+        "competition",
+        "order",
+    )
+
+    list_filter = ("competition",)
+
+    search_fields = ("name", "competition__name")
+    
+def events_button(self, obj):
+    url = reverse(
+        "admin_quick_events",
+        args=[obj.competition.id]
+    )
+
+    full_url = f"{url}?match={obj.id}"
+
+    return format_html(
+        '<a class="button" href="{}">⚡ Events</a>',
+        full_url
+    )
+
+events_button.short_description = "Events"
