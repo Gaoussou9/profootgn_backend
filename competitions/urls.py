@@ -12,6 +12,7 @@ from .api_views import (
     competition_match_detail,
     competition_player_detail_api,
     match_players_api,
+    competition_match_lineups_api,
 )
 
 from competitions.admin_views import (
@@ -19,6 +20,9 @@ from competitions.admin_views import (
     competition_club_players_view,
     admin_quick_events_view,
 )
+
+from . import admin_views
+from . import api_views
 
 app_name = "competitions"
 
@@ -121,4 +125,26 @@ urlpatterns = [
         match_players_api,
         name="api_match_players",
     ),
+
+    path(
+    "admin/competitions/<int:competition_id>/matches/<int:match_id>/lineups/",
+    admin_views.competition_match_lineup_view,
+    name="competition_match_lineup",
+    ),
+
+    path(
+    "admin/competitions/<int:competition_id>/matches/<int:match_id>/subs/",
+    admin_views.competition_match_substitutions_view,
+    name="competition_match_substitutions"
+    ),
+
+    path(
+    "api/competitions/<int:competition_id>/matches/<int:match_id>/lineups/",
+    competition_match_lineups_api,
+    ),
+
+    path(
+    "api/competitions/<int:competition_id>/matches/<int:match_id>/lineups/",
+    api_views.competition_match_lineups_api,
+),
 ]

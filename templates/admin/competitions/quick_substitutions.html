@@ -1,0 +1,489 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<style>
+
+.page-wrapper{
+    max-width:1100px;
+    margin:auto;
+}
+
+.header{
+    background:linear-gradient(135deg,#0f9d58,#0b7a43);
+    color:white;
+    padding:30px;
+    border-radius:20px;
+    margin-bottom:30px;
+    box-shadow:0 10px 25px rgba(0,0,0,.15);
+}
+
+.title{
+    font-size:38px;
+    font-weight:800;
+}
+
+.subtitle{
+    margin-top:10px;
+    opacity:.9;
+    font-size:18px;
+}
+
+.card{
+    background:white;
+    padding:25px;
+    border-radius:20px;
+    box-shadow:0 8px 20px rgba(0,0,0,.08);
+}
+
+.form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr 150px 180px;
+    gap:15px;
+    align-items:end;
+}
+
+.form-group{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+
+.form-group label{
+    font-weight:700;
+    color:#374151;
+}
+
+select,
+input{
+    padding:12px;
+    border-radius:12px;
+    border:1px solid #d1d5db;
+    font-size:15px;
+    background:white;
+}
+
+.save-btn{
+    background:#16a34a;
+    color:white;
+    border:none;
+    padding:14px;
+    border-radius:12px;
+    font-weight:700;
+    cursor:pointer;
+    transition:.2s;
+    box-shadow:0 8px 20px rgba(22,163,74,.25);
+}
+
+.save-btn:hover{
+    background:#15803d;
+    transform:translateY(-2px);
+}
+
+.list-card{
+    margin-top:30px;
+    background:white;
+    padding:25px;
+    border-radius:20px;
+    box-shadow:0 8px 20px rgba(0,0,0,.08);
+}
+
+.list-title{
+    font-size:24px;
+    font-weight:800;
+    margin-bottom:20px;
+}
+
+.sub-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:18px;
+    border-radius:16px;
+    background:#f9fafb;
+    margin-bottom:14px;
+    border:1px solid #eef2f7;
+}
+
+.player{
+    font-weight:700;
+    font-size:16px;
+}
+
+.minute{
+    font-size:22px;
+    font-weight:800;
+    color:#16a34a;
+}
+
+.out{
+    color:#dc2626;
+    margin-bottom:8px;
+}
+
+.in{
+    color:#16a34a;
+}
+
+.badge{
+    display:inline-block;
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:700;
+}
+
+.badge-starter{
+    background:#dcfce7;
+    color:#166534;
+}
+
+.badge-sub{
+    background:#dbeafe;
+    color:#1d4ed8;
+}
+
+.section-title{
+    margin-bottom:15px;
+    font-size:18px;
+    font-weight:800;
+    color:#111827;
+}
+
+@media(max-width:900px){
+
+    .form-grid{
+        grid-template-columns:1fr;
+    }
+
+}
+
+</style>
+
+<div class="page-wrapper">
+
+    <!-- HEADER -->
+    <div class="header">
+
+        <div class="title">
+            🔄 Changements rapides
+        </div>
+
+        <div class="subtitle">
+            {{ match.home_team.name }}
+            vs
+            {{ match.away_team.name }}
+        </div>
+
+    </div>
+
+    <!-- FORM -->
+    <div class="card">
+
+        <div class="section-title">
+            Ajouter un changement
+        </div>
+
+        <form method="post">
+
+            {% csrf_token %}
+
+            <div class="form-grid">
+
+                <!-- CLUB -->
+<div class="form-group">
+
+    <label>
+        🏟 Équipe
+    </label>
+
+    <select
+        id="teamSelect"
+    >
+
+        <option value="">
+            -- Choisir une équipe --
+        </option>
+
+        <option value="{{ match.home_team.id }}">
+            {{ match.home_team.name }}
+        </option>
+
+        <option value="{{ match.away_team.id }}">
+            {{ match.away_team.name }}
+        </option>
+
+    </select>
+
+</div>
+
+                <!-- SORTANT -->
+                <div class="form-group">
+
+                    <label>
+                        ⬇ Joueur sortant
+                    </label>
+
+                    <select name="player_out" required>
+
+                        <option value="">
+                            -- Titulaire --
+                        </option>
+
+                        {% for l in lineups %}
+
+                            {% if l.is_starter %}
+
+                            <option
+    value="{{ l.player.id }}"
+    data-team="{{ l.team.id }}"
+>
+
+                                {{ l.player.name }}
+                                • {{ l.team.name }}
+
+                            </option>
+
+                            {% endif %}
+
+                        {% endfor %}
+
+                    </select>
+
+                    <span class="badge badge-starter">
+                        Titulaires uniquement
+                    </span>
+
+                </div>
+
+                <!-- ENTRANT -->
+                <div class="form-group">
+
+                    <label>
+                        ⬆ Joueur entrant
+                    </label>
+
+                    <select name="player_in" required>
+
+                        <option value="">
+                            -- Remplaçant --
+                        </option>
+
+                        {% for l in lineups %}
+
+                            {% if not l.is_starter %}
+
+                            <option
+    value="{{ l.player.id }}"
+    data-team="{{ l.team.id }}"
+>
+
+                                {{ l.player.name }}
+                                • {{ l.team.name }}
+
+                            </option>
+
+                            {% endif %}
+
+                        {% endfor %}
+
+                    </select>
+
+                    <span class="badge badge-sub">
+                        Remplaçants uniquement
+                    </span>
+
+                </div>
+
+                <!-- MINUTE -->
+                <div class="form-group">
+
+                    <label>
+                        ⏱ Minute
+                    </label>
+
+                    <input
+                        type="number"
+                        name="minute"
+                        min="1"
+                        max="130"
+                        placeholder="67"
+                        required
+                    >
+
+                </div>
+
+                <!-- BTN -->
+                <button
+                    type="submit"
+                    class="save-btn"
+                >
+                    🔄 Ajouter
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+    <!-- LISTE -->
+    <div class="list-card">
+
+        <div class="list-title">
+            Changements enregistrés
+        </div>
+
+        {% for s in substitutions %}
+
+        <div class="sub-row">
+
+    <!-- INFOS -->
+    <div>
+
+        <div class="player out">
+            ⬇ {{ s.player_out.name }}
+        </div>
+
+        <div class="player in">
+            ⬆ {{ s.player_in.name }}
+        </div>
+
+    </div>
+
+    <!-- DROITE -->
+    <div
+        style="
+            display:flex;
+            align-items:center;
+            gap:15px;
+        "
+    >
+
+        <!-- MINUTE -->
+        <div class="minute">
+            {{ s.minute }}'
+        </div>
+
+        <!-- ACTIONS -->
+        <div
+            style="
+                display:flex;
+                gap:10px;
+            "
+        >
+
+            <!-- EDIT -->
+            <a
+                href="?edit={{ s.id }}"
+                style="
+                    background:#2563eb;
+                    color:white;
+                    width:36px;
+                    height:36px;
+                    border-radius:10px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    text-decoration:none;
+                    font-size:18px;
+                "
+            >
+                ✏️
+            </a>
+
+            <!-- DELETE -->
+            <a
+                href="?delete={{ s.id }}"
+                onclick="return confirm('Supprimer ce changement ?')"
+
+                style="
+                    background:#dc2626;
+                    color:white;
+                    width:36px;
+                    height:36px;
+                    border-radius:10px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    text-decoration:none;
+                    font-size:18px;
+                "
+            >
+                🗑
+            </a>
+
+        </div>
+
+    </div>
+
+</div>
+
+        {% empty %}
+
+        <p style="color:#6b7280;">
+            Aucun changement enregistré.
+        </p>
+
+        {% endfor %}
+
+    </div>
+
+</div>
+
+<script>
+
+const teamSelect =
+    document.getElementById("teamSelect");
+
+const outSelect =
+    document.querySelector(
+        'select[name="player_out"]'
+    );
+
+const inSelect =
+    document.querySelector(
+        'select[name="player_in"]'
+    );
+
+function filterPlayers(){
+
+    const teamId =
+        teamSelect.value;
+
+    // SORTANTS
+    [...outSelect.options].forEach(option => {
+
+        if(!option.dataset.team){
+            option.hidden = false;
+            return;
+        }
+
+        option.hidden =
+            option.dataset.team !== teamId;
+
+    });
+
+    // ENTRANTS
+    [...inSelect.options].forEach(option => {
+
+        if(!option.dataset.team){
+            option.hidden = false;
+            return;
+        }
+
+        option.hidden =
+            option.dataset.team !== teamId;
+
+    });
+
+}
+
+teamSelect.addEventListener(
+    "change",
+    filterPlayers
+);
+
+</script>
+
+{% endblock %}

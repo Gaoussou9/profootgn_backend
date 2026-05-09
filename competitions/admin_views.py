@@ -11,6 +11,8 @@ from matches.models import Round
 
 from competitions.models import Goal, Card
 from competitions.models import Competition
+from .models import CompetitionMatch, MatchLineup
+from .models import MatchSubstitution
 # =====================================================
 # MATCHS ADMIN (PAGE PRINCIPALE COMPÉTITION)
 # =====================================================
@@ -744,4 +746,311 @@ def update_card_view(request, competition_id, card_id):
 
     return redirect(
         f"/admin/competitions/{competition_id}/quick-events/?match={card.match.id}"
+    )
+
+
+# ======================
+# COMPOSITIONS LINEUPS
+# ======================
+@staff_member_required
+def competition_match_lineup_view(
+    request,
+    competition_id,
+    match_id
+):
+
+    competition = get_object_or_404(
+        Competition,
+        id=competition_id
+    )
+
+    match = get_object_or_404(
+        CompetitionMatch,
+        id=match_id,
+        competition=competition
+    )
+
+    players = Player.objects.filter(
+        club__in=[match.home_team, match.away_team],
+        is_active=True
+    ).order_by("club__name", "number")
+
+    # =========================
+    # SAVE
+    # =========================
+
+    if request.method == "POST":
+
+        # reset anciennes compos
+        MatchLineup.objects.filter(
+            match=match
+        ).delete()
+
+        for player in players:
+
+            starter = request.POST.get(
+                f"starter_{player.id}"
+            )
+
+            substitute = request.POST.get(
+                f"sub_{player.id}"
+            )
+
+            # 🔥 POSITION
+            position = request.POST.get(
+                f"position_{player.id}"
+            )
+
+            if starter or substitute:
+
+                MatchLineup.objects.create(
+
+    match=match,
+
+    player=player,
+
+    team=player.club,
+
+    # titulaire ?
+    is_starter=bool(starter),
+
+    # gardien ?
+    is_goalkeeper=bool(
+        position == "GK"
+    ),
+
+    # capitaine ?
+    is_captain=bool(
+        request.POST.get(
+            f"captain_{player.id}"
+        )
+    ),
+
+    # 🔥 POSITION
+    position=position or None,
+
+    # 🔥 NOTE JOUEUR
+    rating=request.POST.get(
+        f"rating_{player.id}"
+    ) or 0,
+
+    # 🔥 HOMME DU MATCH
+    man_of_match=bool(
+        request.POST.get(
+            f"motm_{player.id}"
+        )
+    ),
+)
+                
+
+        return redirect(request.path)
+
+    lineups = MatchLineup.objects.filter(
+        match=match
+    )
+
+    # =========================
+    # POSITIONS
+    # =========================
+
+    positions = [
+
+        ("GK", "Gardien"),
+
+        ("LB", "Latéral gauche"),
+
+        ("CB", "Défenseur central"),
+
+        ("RB", "Latéral droit"),
+
+        ("DM", "Milieu défensif"),
+
+        ("CM", "Milieu central"),
+
+        ("AM", "Milieu offensif"),
+
+        ("LW", "Ailier gauche"),
+
+        ("RW", "Ailier droit"),
+
+        ("ST", "Attaquant"),
+
+    ]
+
+    return render(
+        request,
+        "admin/competitions/quick_lineups.html",
+        {
+            "competition": competition,
+            "match": match,
+            "players": players,
+            "lineups": lineups,
+
+            # 🔥 POSITIONS
+            "positions": positions,
+        }
+    )
+
+
+# =========================
+# SUBSTITUTIONS
+# =========================
+
+@staff_member_required
+def competition_match_substitutions_view(
+    request,
+    competition_id,
+    match_id
+):
+
+    competition = get_object_or_404(
+        Competition,
+        id=competition_id
+    )
+
+    match = get_object_or_404(
+        CompetitionMatch,
+        id=match_id,
+        competition=competition
+    )
+
+    lineups = MatchLineup.objects.filter(
+        match=match
+    ).select_related(
+        "player",
+        "team"
+    )
+
+    substitutions = MatchSubstitution.objects.filter(
+        match=match
+    )
+
+    # =========================
+    # DELETE
+    # =========================
+
+    delete_id = request.GET.get(
+        "delete"
+    )
+
+    if delete_id:
+
+        sub = MatchSubstitution.objects.filter(
+            id=delete_id,
+            match=match
+        ).first()
+
+        if sub:
+
+            # reset joueur sortant
+            lineup_out = MatchLineup.objects.filter(
+                match=match,
+                player=sub.player_out
+            ).first()
+
+            if lineup_out:
+                lineup_out.minute_out = None
+                lineup_out.save()
+
+            # reset joueur entrant
+            lineup_in = MatchLineup.objects.filter(
+                match=match,
+                player=sub.player_in
+            ).first()
+
+            if lineup_in:
+                lineup_in.minute_in = None
+                lineup_in.save()
+
+            sub.delete()
+
+        return redirect(request.path)
+
+    # =========================
+    # SAVE
+    # =========================
+
+    if request.method == "POST":
+
+        player_out_id = request.POST.get(
+            "player_out"
+        )
+
+        player_in_id = request.POST.get(
+            "player_in"
+        )
+
+        minute = request.POST.get(
+            "minute"
+        )
+
+        if (
+            player_out_id
+            and player_in_id
+            and minute
+        ):
+
+            player_out = get_object_or_404(
+                Player,
+                id=player_out_id
+            )
+
+            player_in = get_object_or_404(
+                Player,
+                id=player_in_id
+            )
+
+            # éviter remplacement même joueur
+            if player_out != player_in:
+
+                MatchSubstitution.objects.create(
+
+                    match=match,
+
+                    team=player_out.club,
+
+                    player_out=player_out,
+
+                    player_in=player_in,
+
+                    minute=int(minute),
+                )
+
+                # =========================
+                # UPDATE LINEUPS
+                # =========================
+
+                lineup_out = MatchLineup.objects.filter(
+                    match=match,
+                    player=player_out
+                ).first()
+
+                if lineup_out:
+                    lineup_out.minute_out = int(
+                        minute
+                    )
+                    lineup_out.save()
+
+                lineup_in = MatchLineup.objects.filter(
+                    match=match,
+                    player=player_in
+                ).first()
+
+                if lineup_in:
+                    lineup_in.minute_in = int(
+                        minute
+                    )
+                    lineup_in.save()
+
+        return redirect(request.path)
+
+    return render(
+        request,
+        "admin/competitions/quick_substitutions.html",
+        {
+            "competition": competition,
+            "match": match,
+            "lineups": lineups,
+            "substitutions": substitutions,
+        }
     )

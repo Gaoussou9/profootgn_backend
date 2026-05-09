@@ -168,8 +168,26 @@ class CompetitionMatch(models.Model):
     home_score = models.PositiveIntegerField(default=0)
     away_score = models.PositiveIntegerField(default=0)
 
+    # =========================
+    # FORMATIONS
+    # =========================
+
+    home_formation = models.CharField(
+        max_length=20,
+        default="4-3-3"
+    )
+
+    away_formation = models.CharField(
+        max_length=20,
+        default="4-3-3"
+    )
+
     # moteur du chrono live
-    phase_start = models.DateTimeField(null=True, blank=True)
+    phase_start = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
     phase_offset = models.PositiveIntegerField(default=0)
 
     status = models.CharField(
@@ -181,17 +199,27 @@ class CompetitionMatch(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["datetime"]
+
+        ordering = ["matchday", "datetime"]
+
+        verbose_name = "Match de compétition"
+
+        verbose_name_plural = "Matchs de compétition"
+
         constraints = [
+
             models.CheckConstraint(
-                check=~models.Q(home_team=models.F("away_team")),
+                check=~models.Q(
+                    home_team=models.F("away_team")
+                ),
                 name="competition_match_home_neq_away"
             )
+
         ]
 
     def __str__(self):
-        return f"{self.home_team} vs {self.away_team}"
 
+        return f"{self.home_team} vs {self.away_team}"
     class Meta:
         ordering = ["matchday", "datetime"]
         verbose_name = "Match de compétition"
@@ -283,6 +311,18 @@ class CompetitionPenalty(models.Model):
     points = models.IntegerField()
     reason = models.CharField(max_length=255, blank=True)
 
+    # FORMATIONS
+    home_formation = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+    )
+    away_formation = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -292,7 +332,7 @@ class CompetitionPenalty(models.Model):
 
     def __str__(self):
         sign = "+" if self.points > 0 else ""
-        return f"{self.team.name} {sign}{self.points} pts"
+        return f"{self.team.name} {sign}{self.points} pts"               
 # =====================================================
 # JOUEURS
 # =====================================================
@@ -519,6 +559,149 @@ class CompetitionRound(models.Model):
 
     def __str__(self):
         return f"{self.stage.name} - {self.name}"
-        
+    
 
-                         
+class MatchLineup(models.Model):
+
+    POSITION_CHOICES = (
+
+        ("GK", "Gardien"),
+
+        ("LB", "Latéral gauche"),
+
+        ("CB", "Défenseur central"),
+
+        ("RB", "Latéral droit"),
+
+        ("DM", "Milieu défensif"),
+
+        ("CM", "Milieu central"),
+
+        ("AM", "Milieu offensif"),
+
+        ("LW", "Ailier gauche"),
+
+        ("RW", "Ailier droit"),
+
+        ("ST", "Attaquant"),
+
+    )
+
+    match = models.ForeignKey(
+        CompetitionMatch,
+        on_delete=models.CASCADE,
+        related_name="lineups"
+    )
+
+    player = models.ForeignKey(
+        Player,
+        on_delete=models.CASCADE
+    )
+
+    team = models.ForeignKey(
+        CompetitionTeam,
+        on_delete=models.CASCADE
+    )
+
+    # titulaire ?
+    is_starter = models.BooleanField(default=False)
+
+    # capitaine ?
+    is_captain = models.BooleanField(default=False)
+
+    # gardien ?
+    is_goalkeeper = models.BooleanField(default=False)
+
+    # 🔥 POSITION
+    position = models.CharField(
+        max_length=10,
+        choices=POSITION_CHOICES,
+        null=True,
+        blank=True
+    )
+
+    # 🔥 NOTE JOUEUR
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+        default=0
+    )
+
+    # 🔥 HOMME DU MATCH
+    man_of_match = models.BooleanField(
+        default=False
+    )
+
+    # minute entrée
+    minute_in = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    # minute sortie
+    minute_out = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = ["team", "-is_starter"]
+
+    # POSITION SUR LE TERRAIN
+    x = models.IntegerField(
+        default=50,
+    )
+    y = models.IntegerField(
+    default=50
+    )
+
+    def __str__(self):
+        return f"{self.player.name} - {self.match}"
+    
+# =====================================================
+# SUBSTITUTIONS
+# =====================================================
+
+class MatchSubstitution(models.Model):
+
+    match = models.ForeignKey(
+        CompetitionMatch,
+        on_delete=models.CASCADE,
+        related_name="substitutions"
+    )
+
+    team = models.ForeignKey(
+        CompetitionTeam,
+        on_delete=models.CASCADE
+    )
+
+    player_out = models.ForeignKey(
+        Player,
+        on_delete=models.CASCADE,
+        related_name="subs_out"
+    )
+
+    player_in = models.ForeignKey(
+        Player,
+        on_delete=models.CASCADE,
+        related_name="subs_in"
+    )
+
+    minute = models.PositiveIntegerField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = ["minute"]
+
+    def __str__(self):
+        return (
+            f"{self.player_out} → "
+            f"{self.player_in} ({self.minute}')"
+        )

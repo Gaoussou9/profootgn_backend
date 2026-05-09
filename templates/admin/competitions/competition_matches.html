@@ -117,6 +117,7 @@ input, select { width:100%; padding:10px; }
   ⚡ Événements
 </a>
 
+
   </div>
 </div>
 <div class="card">
@@ -239,28 +240,84 @@ input, select { width:100%; padding:10px; }
         <th>Match</th>
         <th>Score</th>
         <th>Statut</th>
+        <th>Actions</th>
       </tr>
     </thead>
+
     <tbody>
+
       {% for m in matches %}
-      <tr class="clickable"
-          data-id="{{ m.id }}"
-          data-home="{{ m.home_team.id }}"
-          data-away="{{ m.away_team.id }}"
-          data-hs="{{ m.home_score }}"
-          data-as="{{ m.away_score }}"
-          data-day="{{ m.matchday }}"
-          data-status="{{ m.status|upper }}"
-          data-datetime="{{ m.datetime|date:'Y-m-d\\TH:i' }}">
-        <td>{{ m.datetime|date:"d/m/Y H:i" }}</td>
-        <td>J{{ m.matchday }}</td>
-        <td>{{ m.home_team.name }} vs {{ m.away_team.name }}</td>
-        <td>{{ m.home_score }} - {{ m.away_score }}</td>
-        <td>{{ m.get_status_display }}</td>
+
+      <tr
+        class="clickable"
+
+        data-id="{{ m.id }}"
+        data-home="{{ m.home_team.id }}"
+        data-away="{{ m.away_team.id }}"
+        data-hs="{{ m.home_score }}"
+        data-as="{{ m.away_score }}"
+        data-day="{{ m.matchday }}"
+        data-status="{{ m.status|upper }}"
+        data-datetime="{{ m.datetime|date:'Y-m-d\\TH:i' }}"
+      >
+
+        <td>
+          {{ m.datetime|date:"d/m/Y H:i" }}
+        </td>
+
+        <td>
+          J{{ m.matchday }}
+        </td>
+
+        <td>
+          {{ m.home_team.name }}
+          vs
+          {{ m.away_team.name }}
+        </td>
+
+        <td>
+          {{ m.home_score }}
+          -
+          {{ m.away_score }}
+        </td>
+
+        <td>
+          {{ m.get_status_display }}
+        </td>
+
+        <!-- 🔥 ACTIONS -->
+        <td>
+
+          <a
+            href="/admin/competitions/{{ competition.id }}/matches/{{ m.id }}/lineups/"
+            style="
+              background:#2980b9;
+              color:white;
+              padding:8px 12px;
+              border-radius:6px;
+              text-decoration:none;
+              font-weight:600;
+              white-space:nowrap;
+            "
+            onclick="event.stopPropagation();"
+          >
+            👥 Composition
+          </a>
+
+        </td>
+
       </tr>
+
       {% empty %}
-      <tr><td colspan="5">Aucun match</td></tr>
+
+      <tr>
+        <td colspan="6">
+          Aucun match
+        </td>
+      </tr>
+
       {% endfor %}
+
     </tbody>
   </table>
 </div>

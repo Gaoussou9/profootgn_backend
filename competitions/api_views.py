@@ -3,12 +3,22 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
-from .models import Competition, CompetitionMatch, CompetitionTeam, Player
+from .models import (
+    Competition,
+    CompetitionMatch,
+    CompetitionTeam,
+    Player,
+    Goal,
+    Card,
+    MatchSubstitution,
+)
+from django.db.models import Count
 from .serializers import (
     CompetitionMatchSerializer,
     CompetitionListSerializer,
 )
 from .services.standings import calculate_competition_standings
+from .models import MatchLineup
 
 
 # =====================================================
@@ -259,7 +269,11 @@ def competition_club_matches_api(request, competition_id, club_id):
 
 
 @api_view(["GET"])
-def competition_match_detail(request, competition_id, match_id):
+def competition_match_detail(
+    request,
+    competition_id,
+    match_id
+):
 
     competition = get_object_or_404(
         Competition,
@@ -271,7 +285,9 @@ def competition_match_detail(request, competition_id, match_id):
         CompetitionMatch.objects.prefetch_related(
             "goals__player",
             "goals__assist_player",
-            "cards__player"
+            "cards__player",
+            "substitutions__player_out",
+            "substitutions__player_in",
         ),
         id=match_id,
         competition=competition
@@ -282,15 +298,84 @@ def competition_match_detail(request, competition_id, match_id):
         context={"request": request}
     )
 
-    return Response(serializer.data)
+    data = serializer.data
 
+    # =========================
+    # SUBSTITUTIONS
+    # =========================
+
+    data["substitutions"] = [
+
+        {
+
+            "id": sub.id,
+
+            "minute": sub.minute,
+
+            "team": sub.team.id,
+
+            "player_out": {
+
+                "id": sub.player_out.id,
+
+                "club_id": sub.player_out.club.id,
+
+                "name": sub.player_out.name,
+
+                "photo": (
+                    request.build_absolute_uri(
+                        sub.player_out.photo.url
+                    )
+                    if getattr(
+                        sub.player_out,
+                        "photo",
+                        None
+                    )
+                    else None
+                )
+            },
+
+            "player_in": {
+
+                "id": sub.player_in.id,
+
+                "club_id": sub.player_in.club.id,
+
+                "name": sub.player_in.name,
+
+                "photo": (
+                    request.build_absolute_uri(
+                        sub.player_in.photo.url
+                    )
+                    if getattr(
+                        sub.player_in,
+                        "photo",
+                        None
+                    )
+                    else None
+                )
+            }
+
+        }
+
+        for sub in MatchSubstitution.objects.filter(
+            match=match
+        ).select_related(
+            "player_out",
+            "player_in",
+            "team"
+        )
+
+    ]
+
+    return Response(data)
 
 # =====================================================
 # JOUEURS D’UN CLUB
 # =====================================================
-
 @api_view(["GET"])
 def competition_club_players_api(request, competition_id, club_id):
+
     competition = get_object_or_404(
         Competition,
         id=competition_id,
@@ -304,27 +389,98 @@ def competition_club_players_api(request, competition_id, club_id):
         is_active=True
     )
 
-    players = club.players.filter(is_active=True).order_by("number")
+    players = (
+        club.players
+        .filter(is_active=True)
+        .order_by("number")
+    )
 
     data = []
 
     for player in players:
+
+        # =========================
+        # STATS EVENTS
+        # =========================
+
+        event_goals = Goal.objects.filter(
+            player=player,
+            match__competition=competition
+        ).count()
+
+        event_assists = Goal.objects.filter(
+            assist_player=player,
+            match__competition=competition
+        ).count()
+
+        yellow_cards = Card.objects.filter(
+            player=player,
+            match__competition=competition,
+            color="yellow"
+        ).count()
+
+        red_cards = Card.objects.filter(
+            player=player,
+            match__competition=competition,
+            color="red"
+        ).count()
+
+        # =========================
+        # PHOTO
+        # =========================
+
+        photo = None
+
+        if getattr(player, "photo", None):
+            try:
+                photo = request.build_absolute_uri(
+                    player.photo.url
+                )
+            except:
+                photo = None
+
+        # =========================
+        # DATA
+        # =========================
+
         data.append({
+
             "id": player.id,
+
             "name": player.name,
+
             "number": player.number,
+
             "position": player.position,
-            "photo": (
-                request.build_absolute_uri(player.photo.url)
-                if getattr(player, "photo", None)
-                else None
+
+            "photo": photo,
+
+            # 🔥 STATS HYBRIDES
+            "matches_played": getattr(
+                player,
+                "matches_played",
+                0
             ),
-            # 🔥 STATS
-    "matches_played": player.matches_played,
-    "goals": player.goals,
-    "assists": player.assists,
-    "yellow_cards": player.yellow_cards,
-    "red_cards": player.red_cards,
+
+            "goals": (
+                getattr(player, "goals", 0)
+                + event_goals
+            ),
+
+            "assists": (
+                getattr(player, "assists", 0)
+                + event_assists
+            ),
+
+            "yellow_cards": (
+                getattr(player, "yellow_cards", 0)
+                + yellow_cards
+            ),
+
+            "red_cards": (
+                getattr(player, "red_cards", 0)
+                + red_cards
+            ),
         })
 
     return Response({
@@ -333,18 +489,27 @@ def competition_club_players_api(request, competition_id, club_id):
             "name": competition.name,
             "season": competition.season,
         },
+
         "club": {
             "id": club.id,
             "name": club.name,
         },
+
         "players": data
     })
+
+
 # =====================================================
-# DETAILS PLAYERS D’UN CLUB
+# DETAILS PLAYER
 # =====================================================
 
 @api_view(["GET"])
-def competition_player_detail_api(request, competition_id, club_id, player_id):
+def competition_player_detail_api(
+    request,
+    competition_id,
+    club_id,
+    player_id
+):
 
     competition = get_object_or_404(
         Competition,
@@ -366,38 +531,148 @@ def competition_player_detail_api(request, competition_id, club_id, player_id):
         is_active=True
     )
 
+    # =========================
+    # STATS EVENTS
+    # =========================
+
+    event_goals = Goal.objects.filter(
+        player=player,
+        match__competition=competition
+    ).count()
+
+    event_assists = Goal.objects.filter(
+        assist_player=player,
+        match__competition=competition
+    ).count()
+
+    yellow_cards = Card.objects.filter(
+        player=player,
+        match__competition=competition,
+        color="yellow"
+    ).count()
+
+    red_cards = Card.objects.filter(
+        player=player,
+        match__competition=competition,
+        color="red"
+    ).count()
+
+    # =========================
+    # MATCHS JOUÉS LIVE
+    # =========================
+
+    goal_matches = Goal.objects.filter(
+        player=player,
+        match__competition=competition
+    ).values_list(
+        "match_id",
+        flat=True
+    )
+
+    assist_matches = Goal.objects.filter(
+        assist_player=player,
+        match__competition=competition
+    ).values_list(
+        "match_id",
+        flat=True
+    )
+
+    card_matches = Card.objects.filter(
+        player=player,
+        match__competition=competition
+    ).values_list(
+        "match_id",
+        flat=True
+    )
+
+    live_matches_played = len(set(
+        list(goal_matches)
+        + list(assist_matches)
+        + list(card_matches)
+    ))
+
+    # =========================
+    # PHOTO
+    # =========================
+
+    photo = None
+
+    if getattr(player, "photo", None):
+        try:
+            photo = request.build_absolute_uri(
+                player.photo.url
+            )
+        except:
+            photo = None
+
+    # =========================
+    # CLUB LOGO
+    # =========================
+
+    club_logo = None
+
+    if getattr(club, "logo", None):
+        try:
+            club_logo = request.build_absolute_uri(
+                club.logo.url
+            )
+        except:
+            club_logo = None
+
     return Response({
+
         "id": player.id,
+
         "name": player.name,
+
         "number": player.number,
+
         "position": player.position,
-        "photo": (
-            request.build_absolute_uri(player.photo.url)
-            if getattr(player, "photo", None)
-            else None
-        ),
+
+        "photo": photo,
+
         "age": player.age,
+
         "nationality": player.nationality,
+
         "height": player.height,
+
         "previous_club_1": player.previous_club_1,
+
         "previous_club_2": player.previous_club_2,
+
         "previous_club_3": player.previous_club_3,
 
-        # 🔥 STATISTIQUES
-        "matches_played": player.matches_played,
-        "goals": player.goals,
-        "assists": player.assists,
-        "yellow_cards": player.yellow_cards,
-        "red_cards": player.red_cards,
+        # 🔥 STATS HYBRIDES
+        "matches_played": (
+            getattr(player, "matches_played", 0)
+            + live_matches_played
+        ),
+
+        "goals": (
+            getattr(player, "goals", 0)
+            + event_goals
+        ),
+
+        "assists": (
+            getattr(player, "assists", 0)
+            + event_assists
+        ),
+
+        "yellow_cards": (
+            getattr(player, "yellow_cards", 0)
+            + yellow_cards
+        ),
+
+        "red_cards": (
+            getattr(player, "red_cards", 0)
+            + red_cards
+        ),
 
         "club": {
             "id": club.id,
             "name": club.name,
-            "logo": (
-                request.build_absolute_uri(club.logo.url)
-                if getattr(club, "logo", None)
-                else None
-            ),
+            "logo": club_logo,
         }
     })
 
@@ -405,9 +680,9 @@ def competition_player_detail_api(request, competition_id, club_id, player_id):
 # =====================================================
 # CLASSEMENT DES BUTEURS
 # =====================================================
-
 @api_view(["GET"])
 def competition_top_scorers_api(request, competition_id):
+
     competition = get_object_or_404(
         Competition,
         id=competition_id,
@@ -418,60 +693,225 @@ def competition_top_scorers_api(request, competition_id):
         Player.objects
         .filter(
             club__competition_id=competition.id,
-            is_active=True,
-            goals__gt=0
+            is_active=True
         )
         .select_related("club")
-        .order_by("-goals", "-assists", "name")
     )
 
     data = []
 
-    for i, p in enumerate(players, start=1):
-        goals = getattr(p, "goals", 0)
-        matches = getattr(p, "matches_played", 0)
-        assists = getattr(p, "assists", 0)
+    for player in players:
 
-        # 🔥 RATIO
-        ratio = round(goals / matches, 2) if matches > 0 else 0
+        # =========================
+        # BUTS MANUELS
+        # =========================
+
+        manual_goals = getattr(
+            player,
+            "goals",
+            0
+        ) or 0
+
+        # =========================
+        # BUTS EVENTS
+        # =========================
+
+        event_goals = Goal.objects.filter(
+            player=player,
+            match__competition=competition
+        ).count()
+
+        # =========================
+        # TOTAL BUTS
+        # =========================
+
+        total_goals = (
+            manual_goals
+            + event_goals
+        )
+
+        # ignorer joueurs sans but
+        if total_goals <= 0:
+            continue
+
+        # =========================
+        # ASSISTS
+        # =========================
+
+        manual_assists = getattr(
+            player,
+            "assists",
+            0
+        ) or 0
+
+        event_assists = Goal.objects.filter(
+            assist_player=player,
+            match__competition=competition
+        ).count()
+
+        total_assists = (
+            manual_assists
+            + event_assists
+        )
+
+        # =========================
+        # MATCHS JOUÉS LIVE
+        # =========================
+
+        goal_matches = Goal.objects.filter(
+            player=player,
+            match__competition=competition
+        ).values_list(
+            "match_id",
+            flat=True
+        )
+
+        assist_matches = Goal.objects.filter(
+            assist_player=player,
+            match__competition=competition
+        ).values_list(
+            "match_id",
+            flat=True
+        )
+
+        card_matches = Card.objects.filter(
+            player=player,
+            match__competition=competition
+        ).values_list(
+            "match_id",
+            flat=True
+        )
+
+        live_matches_played = len(set(
+            list(goal_matches)
+            + list(assist_matches)
+            + list(card_matches)
+        ))
+
+        # =========================
+        # MATCHS MANUELS
+        # =========================
+
+        manual_matches_played = getattr(
+            player,
+            "matches_played",
+            0
+        ) or 0
+
+        # =========================
+        # TOTAL MATCHS
+        # =========================
+
+        matches_played = (
+            manual_matches_played
+            + live_matches_played
+        )
+
+        # =========================
+        # RATIO
+        # =========================
+
+        ratio = round(
+            total_goals / matches_played,
+            2
+        ) if matches_played > 0 else 0
+
+        # =========================
+        # PHOTO JOUEUR
+        # =========================
+
+        photo = None
+
+        if getattr(player, "photo", None):
+
+            try:
+
+                photo = request.build_absolute_uri(
+                    player.photo.url
+                )
+
+            except:
+
+                photo = None
+
+        # =========================
+        # LOGO CLUB
+        # =========================
+
+        logo = None
+
+        if getattr(player.club, "logo", None):
+
+            try:
+
+                logo = request.build_absolute_uri(
+                    player.club.logo.url
+                )
+
+            except:
+
+                logo = None
+
+        # =========================
+        # DATA
+        # =========================
 
         data.append({
-            "rank": i,
-            "id": p.id,
-            "name": p.name,
-            "goals": goals,
-            "assists": assists,
-            "matches": matches,
+
+            "id": player.id,
+
+            "name": player.name,
+
+            "goals": total_goals,
+
+            "matches_played": matches_played,
+
             "ratio": ratio,
 
-            # 🔥 PHOTO JOUEUR
-            "photo": (
-                request.build_absolute_uri(p.photo.url)
-                if getattr(p, "photo", None)
-                else None
-            ),
+            "assists": total_assists,
+
+            "photo": photo,
 
             "club": {
-                "id": p.club.id,
-                "name": p.club.name,
-                "logo": (
-                    request.build_absolute_uri(p.club.logo.url)
-                    if getattr(p.club, "logo", None)
-                    else None
-                )
+                "id": player.club.id,
+                "name": player.club.name,
+                "logo": logo,
             }
         })
 
+    # =========================
+    # TRI
+    # =========================
+
+    data = sorted(
+        data,
+        key=lambda x: (
+            -x["goals"],
+            x["name"]
+        )
+    )
+
+    # =========================
+    # RANKING
+    # =========================
+
+    for i, row in enumerate(
+        data,
+        start=1
+    ):
+
+        row["rank"] = i
+
     return Response({
+
         "competition": {
             "id": competition.id,
             "name": competition.name,
             "season": competition.season,
         },
-        "scorers": data
-    })
 
-    # =====================================================
+        "scorers": data
+    })    # =====================================================
 # JOUEURS D’UN MATCH (🔥 IMPORTANT)
 # =====================================================
 
@@ -495,3 +935,290 @@ def match_players_api(request, match_id):
     ]
 
     return Response(data)
+
+@api_view(["GET"])
+def competition_match_lineups_api(
+    request,
+    competition_id,
+    match_id
+):
+
+    competition = get_object_or_404(
+        Competition,
+        id=competition_id,
+        is_active=True
+    )
+
+    match = get_object_or_404(
+        CompetitionMatch,
+        id=match_id,
+        competition=competition
+    )
+
+    lineups = MatchLineup.objects.filter(
+        match=match
+    ).select_related(
+        "player",
+        "team"
+    )
+
+    home_starters = []
+    away_starters = []
+
+    home_subs = []
+    away_subs = []
+
+    # =========================
+    # FORMATIONS
+    # =========================
+
+    home_formation = (
+        match.home_formation
+        or "4-3-3"
+    )
+
+    away_formation = (
+        match.away_formation
+        or "4-3-3"
+    )
+
+    # =========================
+    # COORDONNÉES FORMATIONS
+    # =========================
+
+    FORMATION_POSITIONS = {
+
+        "4-3-3": [
+
+            (50, 90),
+
+            (15, 72),
+            (38, 72),
+            (62, 72),
+            (85, 72),
+
+            (25, 50),
+            (50, 45),
+            (75, 50),
+
+            (20, 22),
+            (50, 15),
+            (80, 22),
+        ],
+
+        "4-4-2": [
+
+            (50, 90),
+
+            (15, 72),
+            (38, 72),
+            (62, 72),
+            (85, 72),
+
+            (15, 48),
+            (38, 48),
+            (62, 48),
+            (85, 48),
+
+            (35, 20),
+            (65, 20),
+        ],
+
+        "4-2-3-1": [
+
+            (50, 90),
+
+            (15, 72),
+            (38, 72),
+            (62, 72),
+            (85, 72),
+
+            (35, 55),
+            (65, 55),
+
+            (20, 35),
+            (50, 30),
+            (80, 35),
+
+            (50, 15),
+        ],
+
+    }
+
+    home_positions = FORMATION_POSITIONS.get(
+        home_formation,
+        FORMATION_POSITIONS["4-3-3"]
+    )
+
+    away_positions = FORMATION_POSITIONS.get(
+        away_formation,
+        FORMATION_POSITIONS["4-3-3"]
+    )
+
+    home_index = 0
+    away_index = 0
+
+    for lineup in lineups:
+
+        player = lineup.player
+
+        photo = None
+
+        if getattr(player, "photo", None):
+
+            try:
+
+                photo = request.build_absolute_uri(
+                    player.photo.url
+                )
+
+            except:
+
+                photo = None
+
+        # =========================
+        # COORDONNÉES AUTO
+        # =========================
+
+        if lineup.team.id == match.home_team.id:
+
+            if home_index < len(home_positions):
+
+                x, y = home_positions[home_index]
+
+            else:
+
+                x, y = (50, 50)
+
+            home_index += 1
+
+        else:
+
+            if away_index < len(away_positions):
+
+                x, y = away_positions[away_index]
+
+            else:
+
+                x, y = (50, 50)
+
+            away_index += 1
+
+        player_data = {
+
+            "id": player.id,
+
+            "club_id": player.club.id,
+
+            "name": player.name,
+
+            "number": player.number,
+
+            "photo": photo,
+
+            "position": lineup.position,
+
+            "is_captain": lineup.is_captain,
+
+            "is_goalkeeper": lineup.is_goalkeeper,
+
+            "rating": lineup.rating,
+
+            "is_player_of_match":
+                lineup.man_of_match,
+
+            # =========================
+            # COORDONNÉES TERRAIN
+            # =========================
+
+            "x": x,
+
+            "y": y,
+        }
+
+        # =========================
+        # DOMICILE
+        # =========================
+
+        if lineup.team.id == match.home_team.id:
+
+            if lineup.is_starter:
+
+                home_starters.append(
+                    player_data
+                )
+
+            else:
+
+                home_subs.append(
+                    player_data
+                )
+
+        # =========================
+        # EXTÉRIEUR
+        # =========================
+
+        else:
+
+            if lineup.is_starter:
+
+                away_starters.append(
+                    player_data
+                )
+
+            else:
+
+                away_subs.append(
+                    player_data
+                )
+
+    return Response({
+
+        # =========================
+        # ÉQUIPES
+        # =========================
+
+        "home_team": {
+
+            "id": match.home_team.id,
+
+            "name": match.home_team.name,
+        },
+
+        "away_team": {
+
+            "id": match.away_team.id,
+
+            "name": match.away_team.name,
+        },
+
+        # =========================
+        # FORMATIONS
+        # =========================
+
+        "home_formation":
+            home_formation,
+
+        "away_formation":
+            away_formation,
+
+        # =========================
+        # TITULAIRES
+        # =========================
+
+        "home_starters":
+            home_starters,
+
+        "away_starters":
+            away_starters,
+
+        # =========================
+        # REMPLAÇANTS
+        # =========================
+
+        "home_substitutes":
+            home_subs,
+
+        "away_substitutes":
+            away_subs,
+    })
