@@ -752,6 +752,7 @@ def update_card_view(request, competition_id, card_id):
 # ======================
 # COMPOSITIONS LINEUPS
 # ======================
+
 @staff_member_required
 def competition_match_lineup_view(
     request,
@@ -771,9 +772,154 @@ def competition_match_lineup_view(
     )
 
     players = Player.objects.filter(
-        club__in=[match.home_team, match.away_team],
+        club__in=[
+            match.home_team,
+            match.away_team
+        ],
         is_active=True
-    ).order_by("club__name", "number")
+    ).order_by(
+        "club__name",
+        "number"
+    )
+
+    # =========================
+    # FORMATIONS
+    # =========================
+
+    formation_position_map = {
+
+        # =====================================
+        # 4-3-3
+        # =====================================
+
+        "4-3-3": {
+
+            "GK": [
+                (50, 90),
+            ],
+
+            "LB": [
+                (15, 72),
+            ],
+
+            "CB": [
+                (38, 72),
+                (62, 72),
+            ],
+
+            "RB": [
+                (85, 72),
+            ],
+
+            "DM": [
+                (50, 58),
+            ],
+
+            "CM": [
+                (35, 42),
+                (65, 42),
+            ],
+
+            "LW": [
+                (20, 16),
+            ],
+
+            "RW": [
+                (80, 16),
+            ],
+
+            "ST": [
+                (50, 8),
+            ],
+        },
+
+        # =====================================
+        # 4-4-2
+        # =====================================
+
+        "4-4-2": {
+
+            "GK": [
+                (50, 90),
+            ],
+
+            "LB": [
+                (15, 72),
+            ],
+
+            "CB": [
+                (38, 72),
+                (62, 72),
+            ],
+
+            "RB": [
+                (85, 72),
+            ],
+
+            "LM": [
+                (18, 45),
+            ],
+
+            "CM": [
+                (40, 48),
+                (60, 48),
+            ],
+
+            "RM": [
+                (82, 45),
+            ],
+
+            "ST": [
+                (38, 12),
+                (62, 12),
+            ],
+        },
+
+        # =====================================
+        # 4-2-3-1
+        # =====================================
+
+        "4-2-3-1": {
+
+            "GK": [
+                (50, 90),
+            ],
+
+            "LB": [
+                (15, 72),
+            ],
+
+            "CB": [
+                (38, 72),
+                (62, 72),
+            ],
+
+            "RB": [
+                (85, 72),
+            ],
+
+            "DM": [
+                (40, 58),
+                (60, 58),
+            ],
+
+            "AM": [
+                (50, 38),
+            ],
+
+            "LW": [
+                (20, 24),
+            ],
+
+            "RW": [
+                (80, 24),
+            ],
+
+            "ST": [
+                (50, 10),
+            ],
+        },
+    }
 
     # =========================
     # SAVE
@@ -781,10 +927,35 @@ def competition_match_lineup_view(
 
     if request.method == "POST":
 
+        # =========================
+        # FORMATIONS
+        # =========================
+
+        match.home_formation = request.POST.get(
+            "home_formation"
+        ) or "4-3-3"
+
+        match.away_formation = request.POST.get(
+            "away_formation"
+        ) or "4-3-3"
+
+        match.save()
+
         # reset anciennes compos
         MatchLineup.objects.filter(
             match=match
         ).delete()
+
+        # =========================
+        # COMPTEURS PAR ÉQUIPE
+        # =========================
+
+        home_position_counters = {}
+        away_position_counters = {}
+
+        # =========================
+        # SAVE PLAYERS
+        # =========================
 
         for player in players:
 
@@ -796,52 +967,118 @@ def competition_match_lineup_view(
                 f"sub_{player.id}"
             )
 
-            # 🔥 POSITION
             position = request.POST.get(
                 f"position_{player.id}"
             )
 
+            x = 50
+            y = 50
+
+            # =========================
+            # TITULAIRES
+            # =========================
+
+            if starter and position:
+
+                # équipe domicile ?
+                is_home = (
+                    player.club.id ==
+                    match.home_team.id
+                )
+
+                formation = (
+                    match.home_formation
+                    if is_home
+                    else match.away_formation
+                )
+
+                formation_data = formation_position_map.get(
+                    formation,
+                    formation_position_map["4-3-3"]
+                )
+
+                available_positions = formation_data.get(
+                    position,
+                    [(50, 50)]
+                )
+
+                counters = (
+                    home_position_counters
+                    if is_home
+                    else away_position_counters
+                )
+
+                current_count = counters.get(
+                    position,
+                    0
+                )
+
+                coords = available_positions[
+                    min(
+                        current_count,
+                        len(available_positions) - 1
+                    )
+                ]
+
+                x, y = coords
+
+                counters[position] = (
+                    current_count + 1
+                )
+
+            # =========================
+            # SAVE LINEUP
+            # =========================
+
             if starter or substitute:
 
-                MatchLineup.objects.create(
+                lineup = MatchLineup.objects.create(
 
-    match=match,
+                    match=match,
 
-    player=player,
+                    player=player,
 
-    team=player.club,
+                    team=player.club,
 
-    # titulaire ?
-    is_starter=bool(starter),
+                    is_starter=bool(starter),
 
-    # gardien ?
-    is_goalkeeper=bool(
-        position == "GK"
-    ),
+                    is_goalkeeper=bool(
+                        position == "GK"
+                    ),
 
-    # capitaine ?
-    is_captain=bool(
-        request.POST.get(
-            f"captain_{player.id}"
-        )
-    ),
+                    is_captain=bool(
+                        request.POST.get(
+                            f"captain_{player.id}"
+                        )
+                    ),
 
-    # 🔥 POSITION
-    position=position or None,
+                    position=position or None,
 
-    # 🔥 NOTE JOUEUR
-    rating=request.POST.get(
-        f"rating_{player.id}"
-    ) or 0,
+                    rating=request.POST.get(
+                        f"rating_{player.id}"
+                    ) or 0,
 
-    # 🔥 HOMME DU MATCH
-    man_of_match=bool(
-        request.POST.get(
-            f"motm_{player.id}"
-        )
-    ),
-)
-                
+                    man_of_match=bool(
+                        request.POST.get(
+                            f"motm_{player.id}"
+                        )
+                    ),
+
+                    x=x,
+                    y=y,
+                )
+
+                # =========================
+                # MATCH JOUÉ
+                # =========================
+
+                if lineup.is_starter:
+
+                    player.matches_played = (
+                        player.matches_played or 0
+                    ) + 1
+
+                    player.save()
 
         return redirect(request.path)
 
@@ -874,7 +1111,27 @@ def competition_match_lineup_view(
         ("RW", "Ailier droit"),
 
         ("ST", "Attaquant"),
+    ]
 
+    # =========================
+    # FORMATIONS
+    # =========================
+
+    formations = [
+
+        "4-3-3",
+
+        "4-4-2",
+
+        "4-2-3-1",
+
+        "3-5-2",
+
+        "3-4-3",
+
+        "5-3-2",
+
+        "4-1-4-1",
     ]
 
     return render(
@@ -885,12 +1142,10 @@ def competition_match_lineup_view(
             "match": match,
             "players": players,
             "lineups": lineups,
-
-            # 🔥 POSITIONS
             "positions": positions,
+            "formations": formations,
         }
     )
-
 
 # =========================
 # SUBSTITUTIONS
@@ -949,7 +1204,9 @@ def competition_match_substitutions_view(
             ).first()
 
             if lineup_out:
+
                 lineup_out.minute_out = None
+
                 lineup_out.save()
 
             # reset joueur entrant
@@ -959,7 +1216,9 @@ def competition_match_substitutions_view(
             ).first()
 
             if lineup_in:
+
                 lineup_in.minute_in = None
+
                 lineup_in.save()
 
             sub.delete()
@@ -1017,6 +1276,16 @@ def competition_match_substitutions_view(
                 )
 
                 # =========================
+                # MATCH JOUÉ REMPLAÇANT
+                # =========================
+
+                player_in.matches_played = (
+                    player_in.matches_played or 0
+                ) + 1
+
+                player_in.save()
+
+                # =========================
                 # UPDATE LINEUPS
                 # =========================
 
@@ -1026,9 +1295,11 @@ def competition_match_substitutions_view(
                 ).first()
 
                 if lineup_out:
+
                     lineup_out.minute_out = int(
                         minute
                     )
+
                     lineup_out.save()
 
                 lineup_in = MatchLineup.objects.filter(
@@ -1037,9 +1308,11 @@ def competition_match_substitutions_view(
                 ).first()
 
                 if lineup_in:
+
                     lineup_in.minute_in = int(
                         minute
                     )
+
                     lineup_in.save()
 
         return redirect(request.path)
@@ -1049,8 +1322,11 @@ def competition_match_substitutions_view(
         "admin/competitions/quick_substitutions.html",
         {
             "competition": competition,
+
             "match": match,
+
             "lineups": lineups,
+
             "substitutions": substitutions,
         }
     )

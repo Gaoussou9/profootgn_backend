@@ -558,51 +558,21 @@ def competition_player_detail_api(
     ).count()
 
     # =========================
-    # MATCHS JOUÉS LIVE
-    # =========================
-
-    goal_matches = Goal.objects.filter(
-        player=player,
-        match__competition=competition
-    ).values_list(
-        "match_id",
-        flat=True
-    )
-
-    assist_matches = Goal.objects.filter(
-        assist_player=player,
-        match__competition=competition
-    ).values_list(
-        "match_id",
-        flat=True
-    )
-
-    card_matches = Card.objects.filter(
-        player=player,
-        match__competition=competition
-    ).values_list(
-        "match_id",
-        flat=True
-    )
-
-    live_matches_played = len(set(
-        list(goal_matches)
-        + list(assist_matches)
-        + list(card_matches)
-    ))
-
-    # =========================
     # PHOTO
     # =========================
 
     photo = None
 
     if getattr(player, "photo", None):
+
         try:
+
             photo = request.build_absolute_uri(
                 player.photo.url
             )
+
         except:
+
             photo = None
 
     # =========================
@@ -612,11 +582,15 @@ def competition_player_detail_api(
     club_logo = None
 
     if getattr(club, "logo", None):
+
         try:
+
             club_logo = request.build_absolute_uri(
                 club.logo.url
             )
+
         except:
+
             club_logo = None
 
     return Response({
@@ -643,10 +617,14 @@ def competition_player_detail_api(
 
         "previous_club_3": player.previous_club_3,
 
-        # 🔥 STATS HYBRIDES
-        "matches_played": (
-            getattr(player, "matches_played", 0)
-            + live_matches_played
+        # =========================
+        # STATS
+        # =========================
+
+        "matches_played": getattr(
+            player,
+            "matches_played",
+            0
         ),
 
         "goals": (
@@ -670,18 +648,25 @@ def competition_player_detail_api(
         ),
 
         "club": {
+
             "id": club.id,
+
             "name": club.name,
+
             "logo": club_logo,
         }
     })
 
-    from django.db.models import F
+
 # =====================================================
 # CLASSEMENT DES BUTEURS
 # =====================================================
+
 @api_view(["GET"])
-def competition_top_scorers_api(request, competition_id):
+def competition_top_scorers_api(
+    request,
+    competition_id
+):
 
     competition = get_object_or_404(
         Competition,
@@ -703,7 +688,7 @@ def competition_top_scorers_api(request, competition_id):
     for player in players:
 
         # =========================
-        # BUTS MANUELS
+        # BUTS
         # =========================
 
         manual_goals = getattr(
@@ -712,18 +697,10 @@ def competition_top_scorers_api(request, competition_id):
             0
         ) or 0
 
-        # =========================
-        # BUTS EVENTS
-        # =========================
-
         event_goals = Goal.objects.filter(
             player=player,
             match__competition=competition
         ).count()
-
-        # =========================
-        # TOTAL BUTS
-        # =========================
 
         total_goals = (
             manual_goals
@@ -755,57 +732,14 @@ def competition_top_scorers_api(request, competition_id):
         )
 
         # =========================
-        # MATCHS JOUÉS LIVE
+        # MATCHS JOUÉS
         # =========================
 
-        goal_matches = Goal.objects.filter(
-            player=player,
-            match__competition=competition
-        ).values_list(
-            "match_id",
-            flat=True
-        )
-
-        assist_matches = Goal.objects.filter(
-            assist_player=player,
-            match__competition=competition
-        ).values_list(
-            "match_id",
-            flat=True
-        )
-
-        card_matches = Card.objects.filter(
-            player=player,
-            match__competition=competition
-        ).values_list(
-            "match_id",
-            flat=True
-        )
-
-        live_matches_played = len(set(
-            list(goal_matches)
-            + list(assist_matches)
-            + list(card_matches)
-        ))
-
-        # =========================
-        # MATCHS MANUELS
-        # =========================
-
-        manual_matches_played = getattr(
+        matches_played = getattr(
             player,
             "matches_played",
             0
         ) or 0
-
-        # =========================
-        # TOTAL MATCHS
-        # =========================
-
-        matches_played = (
-            manual_matches_played
-            + live_matches_played
-        )
 
         # =========================
         # RATIO
@@ -873,8 +807,11 @@ def competition_top_scorers_api(request, competition_id):
             "photo": photo,
 
             "club": {
+
                 "id": player.club.id,
+
                 "name": player.club.name,
+
                 "logo": logo,
             }
         })
@@ -905,13 +842,17 @@ def competition_top_scorers_api(request, competition_id):
     return Response({
 
         "competition": {
+
             "id": competition.id,
+
             "name": competition.name,
+
             "season": competition.season,
         },
 
         "scorers": data
-    })    # =====================================================
+    })    
+# =====================================================
 # JOUEURS D’UN MATCH (🔥 IMPORTANT)
 # =====================================================
 
@@ -968,96 +909,6 @@ def competition_match_lineups_api(
     home_subs = []
     away_subs = []
 
-    # =========================
-    # FORMATIONS
-    # =========================
-
-    home_formation = (
-        match.home_formation
-        or "4-3-3"
-    )
-
-    away_formation = (
-        match.away_formation
-        or "4-3-3"
-    )
-
-    # =========================
-    # COORDONNÉES FORMATIONS
-    # =========================
-
-    FORMATION_POSITIONS = {
-
-        "4-3-3": [
-
-            (50, 90),
-
-            (15, 72),
-            (38, 72),
-            (62, 72),
-            (85, 72),
-
-            (25, 50),
-            (50, 45),
-            (75, 50),
-
-            (20, 22),
-            (50, 15),
-            (80, 22),
-        ],
-
-        "4-4-2": [
-
-            (50, 90),
-
-            (15, 72),
-            (38, 72),
-            (62, 72),
-            (85, 72),
-
-            (15, 48),
-            (38, 48),
-            (62, 48),
-            (85, 48),
-
-            (35, 20),
-            (65, 20),
-        ],
-
-        "4-2-3-1": [
-
-            (50, 90),
-
-            (15, 72),
-            (38, 72),
-            (62, 72),
-            (85, 72),
-
-            (35, 55),
-            (65, 55),
-
-            (20, 35),
-            (50, 30),
-            (80, 35),
-
-            (50, 15),
-        ],
-
-    }
-
-    home_positions = FORMATION_POSITIONS.get(
-        home_formation,
-        FORMATION_POSITIONS["4-3-3"]
-    )
-
-    away_positions = FORMATION_POSITIONS.get(
-        away_formation,
-        FORMATION_POSITIONS["4-3-3"]
-    )
-
-    home_index = 0
-    away_index = 0
-
     for lineup in lineups:
 
         player = lineup.player
@@ -1075,34 +926,6 @@ def competition_match_lineups_api(
             except:
 
                 photo = None
-
-        # =========================
-        # COORDONNÉES AUTO
-        # =========================
-
-        if lineup.team.id == match.home_team.id:
-
-            if home_index < len(home_positions):
-
-                x, y = home_positions[home_index]
-
-            else:
-
-                x, y = (50, 50)
-
-            home_index += 1
-
-        else:
-
-            if away_index < len(away_positions):
-
-                x, y = away_positions[away_index]
-
-            else:
-
-                x, y = (50, 50)
-
-            away_index += 1
 
         player_data = {
 
@@ -1124,16 +947,16 @@ def competition_match_lineups_api(
 
             "rating": lineup.rating,
 
-            "is_player_of_match":
-                lineup.man_of_match,
+            "is_player_of_match": lineup.man_of_match,
+    
 
             # =========================
             # COORDONNÉES TERRAIN
             # =========================
 
-            "x": x,
+            "x": lineup.x,
 
-            "y": y,
+            "y": lineup.y,
         }
 
         # =========================
@@ -1197,10 +1020,10 @@ def competition_match_lineups_api(
         # =========================
 
         "home_formation":
-            home_formation,
+            match.home_formation,
 
         "away_formation":
-            away_formation,
+            match.away_formation,
 
         # =========================
         # TITULAIRES

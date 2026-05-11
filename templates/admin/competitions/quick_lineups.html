@@ -221,6 +221,40 @@
             <div class="team-card">
 
                 <div class="team-name">
+                    <div style="margin-top:15px;">
+
+    <label
+        style="
+            display:block;
+            margin-bottom:6px;
+            font-weight:700;
+            color:#374151;
+        "
+    >
+        Formation
+    </label>
+
+    <select
+        name="home_formation"
+        class="position-select"
+    >
+
+        {% for f in formations %}
+
+        <option
+            value="{{ f }}"
+            {% if match.home_formation == f %}
+                selected
+            {% endif %}
+        >
+            {{ f }}
+        </option>
+
+        {% endfor %}
+
+    </select>
+
+</div>
                     <span class="badge badge-home">
                         DOMICILE
                     </span>
@@ -389,6 +423,40 @@
             <div class="team-card">
 
                 <div class="team-name">
+                    <div style="margin-top:15px;">
+
+    <label
+        style="
+            display:block;
+            margin-bottom:6px;
+            font-weight:700;
+            color:#374151;
+        "
+    >
+        Formation
+    </label>
+
+    <select
+        name="away_formation"
+        class="position-select"
+    >
+
+        {% for f in formations %}
+
+        <option
+            value="{{ f }}"
+            {% if match.away_formation == f %}
+                selected
+            {% endif %}
+        >
+            {{ f }}
+        </option>
+
+        {% endfor %}
+
+    </select>
+
+</div>
                     <span class="badge badge-away">
                         EXTÉRIEUR
                     </span>
